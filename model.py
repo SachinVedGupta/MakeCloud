@@ -1,9 +1,10 @@
 import os
 import google.generativeai as genai
 from typing import List, Dict
+from run_cloud import run_terraform
 
 # Configure the Gemini model client
-genai.configure(api_key="Gemini API key")
+genai.configure(api_key="AIzaSyDxq3oqxKYDMEoKOG77P7VU5JOEJOEG3VQ")
 
 # Initialize Gemini pro model
 model = genai.GenerativeModel("gemini-pro")
@@ -18,16 +19,16 @@ def get_required_information(resource_type: str) -> List[str]:
         chat = model.start_chat(history=[
             {
                 "role": "user",
-                "parts": ["You are an AI assistant that helps users create the most basic Terraform Infrastructure as Code scripts for cloud resource provisioning. Given a cloud resource type, return ONLY a list of questions that need to be answered to create the most basic version of the Terraform configuration, with no additional text."]
+                "parts": ["You are an AI assistant that helps users create the most basic Terraform Infrastructure as Code scripts for cloud resource provisioning. Given a cloud resource type, return ONLY a list of questions (always including necessary credentials associated to the user's account) that need to be answered to create the most basic version of the Terraform configuration, with no additional text."]
             },
             {
                 "role": "model",
-                "parts": ["I will provide only the necessary questions for the most basic Terraform cloud infrastructure configuration when given a resource type. Please provide the resource type."]
+                "parts": ["I will provide only the necessary questions (always including necessary credentials associated to the user's account) for the most basic Terraform cloud infrastructure configuration when given a resource type. Please provide the resource type."]
             }
         ])
         
         # Ask for the questions
-        response = chat.send_message(f"What information is needed to create the most basic Terraform Infrastructure as Code configuration for {resource_type}? Return ONLY the questions, one per line, with no additional text.")
+        response = chat.send_message(f"What information is needed to create the most basic Terraform Infrastructure as Code configuration for {resource_type}? Return ONLY the questions (always including access key, secret key, and region), one per line, with no additional text.")
         
         # Split the response into individual questions and remove duplicates while maintaining order
         seen = set()
@@ -65,11 +66,11 @@ def generate_terraform_script_from_answers(resource_type: str, answers: List[str
         chat = model.start_chat(history=[
             {
                 "role": "user",
-                "parts": ["You are an AI assistant that creates the most basic Terraform Infrastructure as Code scripts for cloud resource provisioning. You will generate standard, safe infrastructure code using the provided configuration details."]
+                "parts": ["You are an AI assistant that helps users create the most basic Terraform Infrastructure as Code scripts for cloud resource provisioning. Given a cloud resource type, return ONLY a list of questions (always including access key, secret key, and region) that need to be answered to create the most basic version of the Terraform configuration, with no additional text."]
             },
             {
                 "role": "model",
-                "parts": ["I will generate the most basic Terraform Infrastructure as Code script based on the provided configuration details."]
+                "parts": ["I will provide only the necessary questions (including access key, secret key, and region) for the most basic Terraform cloud infrastructure configuration when given a resource type. Please provide the resource type."]
             }
         ])
         
@@ -173,6 +174,19 @@ if __name__ == "__main__":
         
         print("\nGenerated Terraform Script:")
         print(script)
+
+        print("\n\n\n\n\nDoing terraform config")
+
+        # Check if the first line contains "hdl"
+        if "hcl" in script.splitlines()[0]:
+            # Remove the first line if "hdl" is found
+            new_script = "\n".join(script.splitlines()[1:])
+        else:
+            # Otherwise, keep the script unchanged
+            new_script = script
+
+        # print(new_script)
+        run_terraform(new_script)
         
     except KeyboardInterrupt:
         print("\nProgram cancelled by user. Exiting...")
