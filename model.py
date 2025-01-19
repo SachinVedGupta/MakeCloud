@@ -2,7 +2,7 @@ import os
 import google.generativeai as genai
 
 # Configure the Gemini model client
-genai.configure(api_key=os.environ.get("Gemini api key here"))
+genai.configure(api_key="gemini api key")
 
 # Initialize Gemini pro model
 model = genai.GenerativeModel("gemini-pro")
@@ -11,7 +11,7 @@ model = genai.GenerativeModel("gemini-pro")
 def get_user_input(prompt):
     return input(prompt)
 
-# Tell Gemini to ask the user for necessary information needed to create a valid Terraform script
+# Continuosly ask the user for necessary information needed to create a valid Terraform script
 def generate_terraform_script(initial_prompt):
     # Start new chat
     chat = model.start_chat(history=[
@@ -25,3 +25,34 @@ def generate_terraform_script(initial_prompt):
         }
     ])
 
+    user_input = initial_prompt
+    terraform_script = ""
+
+    # Continues to ask user for information until full script is generated
+    while True:
+        # Ping user input to the model
+        response = chat.send_message(user_input)
+
+        # Check if the message contains the Terraform script
+        if "Here's the complete Terraform script:" in response.text:
+            terraform_script = response.text.split("Here's the complete Terraform script:")
+            [1].strip()
+            break
+
+        print(response.text)
+        user_input = get_user_input("> ")
+
+    return terraform_script
+
+def main():
+    initial_prompt = get_user_input("What cloud resource would you like to provision? ")
+    terraform_script = generate_terraform_script(initial_prompt)
+    print("\nGenerated Terraform Script:")
+    print(terraform_script)
+
+if __name__ == "__main__":
+    main()
+
+# Example usage:
+print("Welcome to the Terraform Script Generator!")
+main()
