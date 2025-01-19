@@ -1,4 +1,4 @@
-// File: C:\Users\Mahee\Desktop\VSC\MakeCloudreal\ai-sdk-preview-attachments-example\app\(preview)\layout.tsx
+// File: C:\Users\sachi\OneDrive\Desktop\Coding Projects\cloudy\app\(preview)\layout.tsx
 import * as entry from '../../../../app/(preview)/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
