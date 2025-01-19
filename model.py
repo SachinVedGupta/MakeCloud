@@ -1,58 +1,180 @@
 import os
 import google.generativeai as genai
+from typing import List, Dict
 
 # Configure the Gemini model client
-genai.configure(api_key="gemini api key")
+genai.configure(api_key="Gemini API key")
 
 # Initialize Gemini pro model
 model = genai.GenerativeModel("gemini-pro")
 
-# User input function to be used for recurrent prompts
-def get_user_input(prompt):
-    return input(prompt)
+def get_required_information(resource_type: str) -> List[str]:
+    """
+    Get a list of required questions based on the resource type.
+    Returns a list of questions to be asked in the frontend.
+    """
+    try:
+        # Start a chat to get the required information
+        chat = model.start_chat(history=[
+            {
+                "role": "user",
+                "parts": ["You are an AI assistant that helps users create the most basic Terraform Infrastructure as Code scripts for cloud resource provisioning. Given a cloud resource type, return ONLY a list of questions that need to be answered to create the most basic version of the Terraform configuration, with no additional text."]
+            },
+            {
+                "role": "model",
+                "parts": ["I will provide only the necessary questions for the most basic Terraform cloud infrastructure configuration when given a resource type. Please provide the resource type."]
+            }
+        ])
+        
+        # Ask for the questions
+        response = chat.send_message(f"What information is needed to create the most basic Terraform Infrastructure as Code configuration for {resource_type}? Return ONLY the questions, one per line, with no additional text.")
+        
+        # Split the response into individual questions and remove duplicates while maintaining order
+        seen = set()
+        questions = []
+        for q in [q.strip() for q in response.text.split('\n') if q.strip()]:
+            if q not in seen:
+                seen.add(q)
+                questions.append(q)
+        
+        # Add the additional specifications question
+        questions.append("Do you have any additional specifications or requirements? (Type 'none' if none)")
+        
+        return questions
+    except Exception as e:
+        print(f"Error getting questions: {str(e)}")
+        return []
 
-# Continuosly ask the user for necessary information needed to create a valid Terraform script
-def generate_terraform_script(initial_prompt):
-    # Start new chat
-    chat = model.start_chat(history=[
-        {
-            "role": "user",
-            "parts": ["You are an AI assistant that helps users create Terraform scripts for cloud resource provisioning. Ask for necessary details and generate a complete, valid Terraform script based on user input."]
-        },
-        {
-            "role": "model",
-            "parts": ["Understood. I'm here to help users create Terraform scripts for cloud resource provisioning. I'll ask for necessary details and generate a complete, valid Terraform script based on the information provided. How can I assist you today?"]
-        }
-    ])
+def generate_terraform_script_from_answers(resource_type: str, answers: List[str], questions: List[str]) -> str:
+    """
+    Generate a Terraform script using the provided answers.
+    """
+    try:
+        # Create a formatted string with questions and answers, excluding 'none' additional specifications
+        qa_pairs = []
+        for q, a in zip(questions[:-1], answers[:-1]):  # Exclude the last pair if it's 'none'
+            qa_pairs.append(f"Q: {q}\nA: {a}")
+            
+        # Add additional specifications if provided
+        if answers[-1].lower() != 'none':
+            qa_pairs.append(f"Additional Specifications: {answers[-1]}")
+            
+        qa_text = "\n".join(qa_pairs)
+        
+        # Start new chat with explicit infrastructure context
+        chat = model.start_chat(history=[
+            {
+                "role": "user",
+                "parts": ["You are an AI assistant that creates the most basic Terraform Infrastructure as Code scripts for cloud resource provisioning. You will generate standard, safe infrastructure code using the provided configuration details."]
+            },
+            {
+                "role": "model",
+                "parts": ["I will generate the most basic Terraform Infrastructure as Code script based on the provided configuration details."]
+            }
+        ])
+        
+        # Send the resource type and Q&A pairs with explicit infrastructure context
+        prompt = f"""
+                Please generate the most basic Terraform Infrastructure as Code script for the following cloud resource:
 
-    user_input = initial_prompt
-    terraform_script = ""
+                Resource Type: {resource_type}
 
-    # Continues to ask user for information until full script is generated
-    while True:
-        # Ping user input to the model
-        response = chat.send_message(user_input)
+                Configuration details:
+                {qa_text}
 
-        # Check if the message contains the Terraform script
-        if "Here's the complete Terraform script:" in response.text:
-            terraform_script = response.text.split("Here's the complete Terraform script:")
-            [1].strip()
-            break
+                Generate only the Terraform configuration code using HashiCorp's HCL syntax. Include provider configuration and resource blocks as needed.
+                """
+        
+        try:
+            response = chat.send_message(prompt)
+            
+            # Extract the Terraform script from the response
+            script_text = response.text
+            
+            # Clean up the response to extract just the code
+            if "```" in script_text:
+                # Extract code between backticks if present
+                script_text = script_text.split("```")[1]
+                if script_text.startswith("terraform"):
+                    script_text = script_text[9:]  # Remove "terraform" language identifier
+            
+            return script_text.strip()
+            
+        except Exception as e:
+            return f"Error generating Terraform script: {str(e)}\n\nPlease try again with more specific configuration details."
+            
+    except Exception as e:
+        return f"Error in script generation: {str(e)}"
 
-        print(response.text)
-        user_input = get_user_input("> ")
+def get_manual_answers(questions: List[str]) -> List[str]:
+    """
+    Manually collect answers for testing purposes.
+    """
+    print("\nPlease provide answers to the following questions:")
+    answers = []
+    for i, question in enumerate(questions, 1):
+        while True:
+            try:
+                answer = input(f"{i}. {question}\nAnswer: ").strip()
+                if answer:  # Ensure answer is not empty
+                    answers.append(answer)
+                    break
+                print("Please provide a non-empty answer.")
+            except KeyboardInterrupt:
+                print("\nInput cancelled. Exiting...")
+                return []
+    return answers
 
-    return terraform_script
+def main(resource_type: str = None, answers: List[str] = None, test_mode: bool = False):
+    """
+    Main function that can be called from the frontend or used for testing.
+    """
+    try:
+        if not resource_type:
+            raise ValueError("Resource type must be provided")
+        
+        # Get the questions
+        questions = get_required_information(resource_type)
+        if not questions:
+            raise ValueError("Failed to generate questions for the resource type")
+        
+        # Print questions with proper numbering
+        print("\nQuestions to ask:")
+        for i, q in enumerate(questions, 1):
+            print(f"{i}. {q}")
+        
+        if test_mode:
+            # Get manual answers for testing
+            answers = get_manual_answers(questions)
+            if not answers:
+                return "Script generation cancelled."
+        
+        if answers:
+            if len(questions) != len(answers):
+                raise ValueError(f"Number of answers ({len(answers)}) doesn't match number of questions ({len(questions)})")
+            
+            return generate_terraform_script_from_answers(resource_type, answers, questions)
+        
+        return questions
+        
+    except Exception as e:
+        return f"Error in main function: {str(e)}"
 
-def main():
-    initial_prompt = get_user_input("What cloud resource would you like to provision? ")
-    terraform_script = generate_terraform_script(initial_prompt)
-    print("\nGenerated Terraform Script:")
-    print(terraform_script)
-
+# Example usage for testing
 if __name__ == "__main__":
-    main()
-
-# Example usage:
-print("Welcome to the Terraform Script Generator!")
-main()
+    try:
+        test_resource = input("What cloud resource would you like to provision? ").strip()
+        if not test_resource:
+            print("Resource type cannot be empty. Exiting...")
+            exit(1)
+            
+        # Run in test mode to manually input answers
+        script = main(resource_type=test_resource, test_mode=True)
+        
+        print("\nGenerated Terraform Script:")
+        print(script)
+        
+    except KeyboardInterrupt:
+        print("\nProgram cancelled by user. Exiting...")
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
