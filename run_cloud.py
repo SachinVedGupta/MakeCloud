@@ -52,7 +52,34 @@ resource "aws_instance" "app_server" {
 }
 """
 
+new = """
+provider "google" {
+  project     = "gen-lang-client-0298102512"
+  region      = "us-west1"
+  access_token = "5ff892a306c81a39487f4fefe8f88e163154b095"
+}
 
-run_terraform(valid_aws_provision_string)
+resource "google_compute_instance" "try_this_gcp" {
+  name         = "try-this-gcp"
+  machine_type = "e2-micro"
+  zone         = "us-west1-a"
+
+  boot_disk {
+    initialize_params {
+      image = "debian-cloud/debian-11"  # Change this if needed
+    }
+  }
+
+  network_interface {
+    network = "default"
+    access_config {}  # Assigns an external IP
+  }
+}
+"""
+
+# run_terraform(new)
+
+
+# run_terraform(valid_aws_provision_string)
 
 #put a function call at the end of the seccond endpoint

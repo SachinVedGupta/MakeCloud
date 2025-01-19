@@ -185,4 +185,4 @@ def run_terraform_provisioning():
     print(f"Terraform run started. Run ID: {run_id}")
 
 # Execute the provisioning
-run_terraform_provisioning()
+# run_terraform_provisioning()
