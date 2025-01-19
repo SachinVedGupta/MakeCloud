@@ -1,338 +1,197 @@
-/* eslint-disable @next/next/no-img-element */
 "use client";
 
-import {
-  AttachmentIcon,
-  BotIcon,
-  UserIcon,
-  VercelIcon,
-} from "@/components/icons";
-import { useChat } from "ai/react";
-import { DragEvent, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { toast } from "sonner";
-import Link from "next/link";
-import { Markdown } from "@/components/markdown";
+import { useState, useRef, useEffect } from "react";
+import { Sun, Moon } from "lucide-react";
 
-const getTextFromDataUrl = (dataUrl: string) => {
-  const base64 = dataUrl.split(",")[1];
-  return window.atob(base64);
-};
-
-function TextFilePreview({ file }: { file: File }) {
-  const [content, setContent] = useState<string>("");
+export default function TerminalChatbot() {
+  const [lines, setLines] = useState<string[]>([
+    "MakeCloud: What cloud infrastructure are you working with today?",
+  ]);
+  const [input, setInput] = useState("");
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [resourceType, setResourceType] = useState(""); // Store the resource_type
+  const [userResponses, setUserResponses] = useState<string[]>([]); // Store user answers
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0); // Track current question
+  const terminalRef = useRef<HTMLDivElement>(null);
+  const [questions, setQuestions] = useState<string[]>([]);
 
   useEffect(() => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result;
-      setContent(typeof text === "string" ? text.slice(0, 100) : "");
-    };
-    reader.readAsText(file);
-  }, [file]);
+    terminalRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [lines]);
 
-  return (
-    <div>
-      {content}
-      {content.length >= 100 && "..."}
-    </div>
-  );
-}
+  const handleExecute = async () => {
+    if (input.trim()) {
+      setLines((prevLines) => [...prevLines, `> ${input}`]);
 
-export default function Home() {
-  const { messages, input, handleSubmit, handleInputChange, isLoading } =
-    useChat({
-      onError: () =>
-        toast.error("You've been rate limited, please try again later!"),
-    });
+      if (!resourceType) {
+        // First input is the resource_type
+        setResourceType(input);
+        setInput(""); // Clear the input immediately
 
-  const [files, setFiles] = useState<FileList | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null); // Reference for the hidden file input
-  const [isDragging, setIsDragging] = useState(false);
+        try {
+          // Fetch questions from the API
+          const response = await fetch(
+            `https://cloudy-bitter-darkness-3933.fly.dev/get_info?resource_type=${encodeURIComponent(
+              input
+            )}`,
+            {
+              method: "GET",
+              headers: {
+                Accept: "application/json",
+              },
+            }
+          );
 
-  const handlePaste = (event: React.ClipboardEvent) => {
-    const items = event.clipboardData?.items;
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
 
-    if (items) {
-      const files = Array.from(items)
-        .map((item) => item.getAsFile())
-        .filter((file): file is File => file !== null);
+          const questionsFromAPI = await response.json();
+          setQuestions(questionsFromAPI);
 
-      if (files.length > 0) {
-        const validFiles = files.filter(
-          (file) =>
-            file.type.startsWith("image/") || file.type.startsWith("text/")
-        );
+          // Start asking questions
+          if (questionsFromAPI.length > 0) {
+            setLines((prevLines) => [
+              ...prevLines,
+              `MakeCloud: ${questionsFromAPI[0]}`,
+            ]);
+          }
+        } catch (error) {
+          setLines((prevLines) => [
+            ...prevLines,
+            `MakeCloud: Error fetching questions. ${error}`,
+          ]);
+          console.error("Fetch Error:", error);
+        } finally {
+          setInput(""); // Clear input field
+        }
+      } else {
+        // Handle subsequent answers
+        setUserResponses((prevResponses) => [...prevResponses, input]);
+        setInput(""); // Clear the input immediately
 
-        if (validFiles.length === files.length) {
-          const dataTransfer = new DataTransfer();
-          validFiles.forEach((file) => dataTransfer.items.add(file));
-          setFiles(dataTransfer.files);
+        // Move to the next question
+        if (currentQuestionIndex + 1 < questions.length) {
+          setCurrentQuestionIndex((prevIndex) => prevIndex + 1);
+          setLines((prevLines) => [
+            ...prevLines,
+            `MakeCloud: ${questions[currentQuestionIndex + 1]}`,
+          ]);
         } else {
-          toast.error("Only image and text files are allowed");
+          // If all questions are answered, concatenate responses and send them back
+          const concatenatedAnswers = userResponses
+            .concat(input)
+            .map((answer, index) => `Q${index + 1}: ${answer}`)
+            .join(", ");
+          setLines((prevLines) => [
+            ...prevLines,
+            `MakeCloud: Sending responses back to AI...`,
+          ]);
+
+          try {
+            const sendResponse = await fetch(
+              "https://cloudy-bitter-darkness-3933.fly.dev/generate_script",
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  resource_type: resourceType, // Pass the resource type as a string
+                  questions: questions, // Pass the list of questions
+                  answers: userResponses.concat(input), // Append the last input to answers
+                }),
+                headers: {
+                  "Content-Type": "application/json", // Ensure proper content-type header
+                  Accept: "application/json",
+                },
+              }
+            );
+
+            if (!sendResponse.ok) {
+              throw new Error(`HTTP error! Status: ${sendResponse.status}`);
+            }
+
+            const finalResponse = await sendResponse.json();
+            setLines((prevLines) => [
+              ...prevLines,
+              `MakeCloud: ${finalResponse}`, // Display the response message
+            ]);
+          } catch (error) {
+            setLines((prevLines) => [
+              ...prevLines,
+              `MakeCloud: Error sending answers. ${error}`,
+            ]);
+            console.error("Fetch Error:", error);
+          }
         }
       }
     }
   };
 
-  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const droppedFiles = event.dataTransfer.files;
-    const droppedFilesArray = Array.from(droppedFiles);
-    if (droppedFilesArray.length > 0) {
-      const validFiles = droppedFilesArray.filter(
-        (file) =>
-          file.type.startsWith("image/") || file.type.startsWith("text/")
-      );
-
-      if (validFiles.length === droppedFilesArray.length) {
-        const dataTransfer = new DataTransfer();
-        validFiles.forEach((file) => dataTransfer.items.add(file));
-        setFiles(dataTransfer.files);
-      } else {
-        toast.error("Only image and text files are allowed!");
-      }
-
-      setFiles(droppedFiles);
-    }
-    setIsDragging(false);
-  };
-
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // Function to handle file selection via the upload button
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  // Function to handle files selected from the file dialog
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = event.target.files;
-    if (selectedFiles) {
-      const validFiles = Array.from(selectedFiles).filter(
-        (file) =>
-          file.type.startsWith("image/") || file.type.startsWith("text/")
-      );
-
-      if (validFiles.length === selectedFiles.length) {
-        const dataTransfer = new DataTransfer();
-        validFiles.forEach((file) => dataTransfer.items.add(file));
-        setFiles(dataTransfer.files);
-      } else {
-        toast.error("Only image and text files are allowed");
-      }
-    }
-  };
+  const toggleTheme = () => setIsDarkMode((prev) => !prev);
 
   return (
     <div
-      className="flex flex-row justify-center pb-20 h-dvh bg-white dark:bg-zinc-900"
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      className={`fade-in relative w-full h-screen flex flex-col justify-center items-center transition-colors duration-500 ${
+        isDarkMode ? "bg-black text-white" : "bg-white text-black"
+      }`}
     >
-      <AnimatePresence>
-        {isDragging && (
-          <motion.div
-            className="fixed pointer-events-none dark:bg-zinc-900/90 h-dvh w-dvw z-10 flex flex-row justify-center items-center flex flex-col gap-1 bg-zinc-100/90"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <div>Drag and drop files here</div>
-            <div className="text-sm dark:text-zinc-400 text-zinc-500">
-              {"(images and text)"}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div className="flex flex-col justify-between gap-4">
-        {messages.length > 0 ? (
-          <div className="flex flex-col gap-2 h-full w-dvw items-center overflow-y-scroll">
-            {messages.map((message, index) => (
-              <motion.div
-                key={message.id}
-                className={`flex flex-row gap-2 px-4 w-full md:w-[500px] md:px-0 ${
-                  index === 0 ? "pt-20" : ""
-                }`}
-                initial={{ y: 5, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-              >
-                <div className="size-[24px] flex flex-col justify-center items-center flex-shrink-0 text-zinc-400">
-                  {message.role === "assistant" ? <BotIcon /> : <UserIcon />}
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <div className="text-zinc-800 dark:text-zinc-300 flex flex-col gap-4">
-                    <Markdown>{message.content}</Markdown>
-                  </div>
-                  <div className="flex flex-row gap-2">
-                    {message.experimental_attachments?.map((attachment) =>
-                      attachment.contentType?.startsWith("image") ? (
-                        <img
-                          className="rounded-md w-40 mb-3"
-                          key={attachment.name}
-                          src={attachment.url}
-                          alt={attachment.name}
-                        />
-                      ) : attachment.contentType?.startsWith("text") ? (
-                        <div className="text-xs w-40 h-24 overflow-hidden text-zinc-400 border p-2 rounded-md dark:bg-zinc-800 dark:border-zinc-700 mb-3">
-                          {getTextFromDataUrl(attachment.url)}
-                        </div>
-                      ) : null
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-
-            {isLoading &&
-              messages[messages.length - 1].role !== "assistant" && (
-                <div className="flex flex-row gap-2 px-4 w-full md:w-[500px] md:px-0">
-                  <div className="size-[24px] flex flex-col justify-center items-center flex-shrink-0 text-zinc-400">
-                    <BotIcon />
-                  </div>
-                  <div className="flex flex-col gap-1 text-zinc-400">
-                    <div>hmm...</div>
-                  </div>
-                </div>
-              )}
-
-            <div ref={messagesEndRef} />
-          </div>
-        ) : (
-          <motion.div className="h-[350px] px-4 w-full md:w-[500px] md:px-0 pt-20">
-            <div className="border rounded-lg p-6 flex flex-col gap-4 text-zinc-500 text-sm dark:text-zinc-400 dark:border-zinc-700">
-              <p className="flex flex-row justify-center gap-4 items-center text-zinc-900 dark:text-zinc-50">
-                <VercelIcon />
-                <span>+</span>
-                <AttachmentIcon />
-              </p>
-              <p>
-                The useChat hook supports sending attachments along with
-                messages as well as rendering previews on the client. This can
-                be useful for building applications that involve sending images,
-                files, and other media content to the AI provider.
-              </p>
-              <p>
-                {" "}
-                Learn more about the{" "}
-                <Link
-                  className="text-blue-500 dark:text-blue-400"
-                  href="https://sdk.vercel.ai/docs/ai-sdk-ui/chatbot#attachments-experimental"
-                  target="_blank"
-                >
-                  useChat{" "}
-                </Link>
-                hook from Vercel AI SDK.
-              </p>
-            </div>
-          </motion.div>
-        )}
-
-        <form
-          className="flex flex-col gap-2 relative items-center"
-          onSubmit={(event) => {
-            const options = files ? { experimental_attachments: files } : {};
-            handleSubmit(event, options);
-            setFiles(null);
-          }}
+      {/* Header */}
+      <header className="w-full max-w-2xl flex justify-between items-center px-4 py-2 border-b">
+        <div className="flex items-center space-x-2">
+          <span className="text-lg font-bold">☁️ MakeCloud</span>
+          <span className="text-sm">Your AI-powered Cloud Assistant</span>
+        </div>
+        <button
+          onClick={toggleTheme}
+          className="p-2 rounded-full border focus:outline-none"
         >
-          <AnimatePresence>
-            {files && files.length > 0 && (
-              <div className="flex flex-row gap-2 absolute bottom-12 px-4 w-full md:w-[500px] md:px-0">
-                {Array.from(files).map((file) =>
-                  file.type.startsWith("image") ? (
-                    <div key={file.name}>
-                      <motion.img
-                        src={URL.createObjectURL(file)}
-                        alt={file.name}
-                        className="rounded-md w-16"
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{
-                          y: -10,
-                          scale: 1.1,
-                          opacity: 0,
-                          transition: { duration: 0.2 },
-                        }}
-                      />
-                    </div>
-                  ) : file.type.startsWith("text") ? (
-                    <motion.div
-                      key={file.name}
-                      className="text-[8px] leading-1 w-28 h-16 overflow-hidden text-zinc-500 border p-2 rounded-lg bg-white dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400"
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{
-                        y: -10,
-                        scale: 1.1,
-                        opacity: 0,
-                        transition: { duration: 0.2 },
-                      }}
-                    >
-                      <TextFilePreview file={file} />
-                    </motion.div>
-                  ) : null
-                )}
-              </div>
-            )}
-          </AnimatePresence>
+          {isDarkMode ? (
+            <Sun className="h-5 w-5 text-yellow-400" />
+          ) : (
+            <Moon className="h-5 w-5 text-indigo-600" />
+          )}
+        </button>
+      </header>
 
-          {/* Hidden file input */}
-          <input
-            type="file"
-            multiple
-            accept="image/*,text/*"
-            ref={fileInputRef}
-            className="hidden"
-            onChange={handleFileChange}
-          />
+      {/* Terminal Display */}
+      <div
+        className={`w-full max-w-2xl flex-grow p-6 overflow-y-auto border rounded-lg ${
+          isDarkMode
+            ? "bg-black text-gray-200 border-gray-700"
+            : "bg-white text-gray-800 border-gray-300"
+        }`}
+        style={{
+          fontFamily: "IBM Plex Mono, monospace",
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {lines.map((line, index) => (
+          <div key={index}>{line}</div>
+        ))}
+        <div ref={terminalRef} />
+      </div>
 
-          <div className="flex items-center w-full md:max-w-[500px] max-w-[calc(100dvw-32px)] bg-zinc-100 dark:bg-zinc-700 rounded-full px-4 py-2">
-            {/* Upload Button */}
-            <button
-              type="button"
-              onClick={handleUploadClick}
-              className="text-zinc-500 dark:text-zinc-300 hover:text-zinc-700 dark:hover:text-zinc-100 focus:outline-none mr-3"
-              aria-label="Upload Files"
-            >
-              <span className="w-5 h-5">
-                <AttachmentIcon aria-hidden="true" />
-              </span>
-            </button>
-
-            {/* Message Input */}
-            <input
-              ref={inputRef}
-              className="bg-transparent flex-grow outline-none text-zinc-800 dark:text-zinc-300 placeholder-zinc-400"
-              placeholder="Send a message..."
-              value={input}
-              onChange={handleInputChange}
-              onPaste={handlePaste}
-            />
-          </div>
-        </form>
+      {/* Input Field */}
+      <div
+        className={`w-full max-w-2xl flex items-center px-4 py-2 border-t ${
+          isDarkMode
+            ? "bg-black text-gray-200 border-gray-700"
+            : "bg-white text-gray-800 border-gray-300"
+        }`}
+      >
+        <span className="text-gray-500 mr-2">{`>`}</span>
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleExecute()}
+          className={`flex-grow px-4 py-2 rounded-lg focus:outline-none ${
+            isDarkMode
+              ? "bg-black text-gray-200 border-gray-700"
+              : "bg-white text-gray-800 border-gray-300"
+          }`}
+          placeholder="Type your command..."
+          style={{ fontFamily: "IBM Plex Mono, monospace" }}
+        />
       </div>
     </div>
   );
