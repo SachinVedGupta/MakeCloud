@@ -17,7 +17,7 @@ app.add_middleware(
 )
 
 # Configure the Gemini model client using an environment variable
-genai.configure(api_key="FILLER_KEY")
+genai.configure(api_key="AIzaSyDxq3oqxKYDMEoKOG77P7VU5JOEJOEG3VQ")
 
 class TerraformModel(BaseModel):
     resource_type: str
