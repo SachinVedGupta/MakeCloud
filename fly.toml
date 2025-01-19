@@ -1,0 +1,22 @@
+# fly.toml app configuration file generated for cloudy-bitter-darkness-3933 on 2025-01-19T00:05:14-05:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'cloudy-bitter-darkness-3933'
+primary_region = 'yyz'
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
