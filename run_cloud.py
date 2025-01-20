@@ -42,7 +42,7 @@ provider "aws" {
 }
 
 resource "aws_instance" "app_server" {
-  ami = "ami-097705bd69072a34d"
+  ami = "ami-0cxzc"
   instance_type = "t2.micro"
 
   tags = {
@@ -54,9 +54,9 @@ resource "aws_instance" "app_server" {
 
 new = """
 provider "google" {
-  project     = "gen-lang-client-0298102512"
+  project     = "gassxax"
   region      = "us-west1"
-  access_token = "5ff892a306c81a39487f4fefe8f88e163154b095"
+  access_token = "5xczc"
 }
 
 resource "google_compute_instance" "try_this_gcp" {

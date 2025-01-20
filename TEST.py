@@ -4,12 +4,12 @@ import json
 # Terraform Cloud API details
 terraform_cloud_url = "https://app.terraform.io/api/v2"
 org_name = "for_hack_uoft"  # Your Terraform Cloud organization name
-workspace_id = "ws-BCRCj4Vc54sT33SF"  # The workspace ID you provided
-api_token = "dVlNetUaHyfjyA.atlasv1.6zuS64DM5pRk8lsYTkQdaV5ML04yGpeBj62QkyvgaiY0g5pImivGESHSmDsY4jck3t4"  # Terraform Cloud API token
+workspace_id = "sddc"  # The workspace ID you provided
+api_token = "cddcc"  # Terraform Cloud API token
 
 # User credentials and terraform script (received from frontend)
-user_aws_access_key = "AKIA2RP6H7VO5IJS57PT"
-user_aws_secret_key = "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"
+user_aws_access_key = "cddcc"
+user_aws_secret_key = "dczc"
 terraform_script = """
 provider "aws" {
   region = "us-east-1"
@@ -18,7 +18,7 @@ provider "aws" {
 }
 
 resource "aws_instance" "example" {
-  ami           = "ami-097705bd69072a34d"
+  ami           = "ami-xczc"
   instance_type = "t2.micro"
   key_name      = "the_pair"
 }

@@ -15,7 +15,7 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
 # Configure Gemini
-genai.configure(api_key="AIzaSyDxq3oqxKYDMEoKOG77P7VU5JOEJOEG3VQ")
+genai.configure(api_key="ADD IT")
 model = genai.GenerativeModel("gemini-pro")
 
 @app.route('/get_info', methods=['GET'])

@@ -4,7 +4,7 @@ from typing import List, Dict
 from run_cloud import run_terraform
 
 # Configure the Gemini model client
-genai.configure(api_key="AIzaSyDxq3oqxKYDMEoKOG77P7VU5JOEJOEG3VQ")
+genai.configure(api_key="daedesd")
 
 # Initialize Gemini pro model
 model = genai.GenerativeModel("gemini-pro")
