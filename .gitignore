@@ -1,1 +1,32 @@
-node_modules/*
+# Virtual environments  
+.venv/  
+__pycache__/  
+
+# Node.js dependencies  
+node_modules/  
+
+# Next.js build folder  
+.next/  
+
+# Terraform files  
+.terraform/
+.terraform.lock.hcl  
+
+# Python cache  
+*.pyc  
+*.pyo  
+*.pyd  
+
+# Environment variables  
+.env  
+.env.example  
+
+# Docker-related files  
+docker-compose.override.yml  
+
+# Git & history files  
+.history/  
+
+# OS-specific files  
+.DS_Store  
+Thumbs.db  

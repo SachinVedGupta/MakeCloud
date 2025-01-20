@@ -1,5 +1,0 @@
-
-provider "aws" {
-  profile = "default"
-  
-}
