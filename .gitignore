@@ -7,10 +7,14 @@ node_modules/
 
 # Next.js build folder  
 .next/  
+.next-env.d.ts  
 
-# Terraform files  
-.terraform/
+# Terraform files (state & plans)  
+.terraform/  
 .terraform.lock.hcl  
+terraform.tfstate  
+terraform.tfstate.backup  
+tfplan  
 
 # Python cache  
 *.pyc  
@@ -24,9 +28,16 @@ node_modules/
 # Docker-related files  
 docker-compose.override.yml  
 
+# Lock files (keep only the one for your package manager)  
+package-lock.json  
+pnpm-lock.yaml  
+
 # Git & history files  
 .history/  
 
 # OS-specific files  
 .DS_Store  
 Thumbs.db  
+
+# Misc (Heroku, editor configs, etc.)  
+Procfile  
