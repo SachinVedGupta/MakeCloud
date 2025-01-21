@@ -1,8 +1,78 @@
-AI Assistant for provisioning infrastructure on ANY cloud provider (AWS, GCP, Azure, ...) in a simple and easy way
+# CloudMake
 
-(try "aws s3" or "aws ec2" in site to get started)
+CloudMake is your one-stop solution for simplifying the deployment of online resources. Designed with **Terraform** at its core, CloudMake streamlines the process of managing infrastructure as code (IaC), making it easier than ever to deploy, manage, and scale your online services.
 
-Also:
-  Run backend with "python app.py"
-  Add in a gemini api key
-  Run front end with "npm run dev" and maybe use "npm i" first if needed
+Visit **[makecloud.work](https://makecloud.work)** to explore CloudMake in action.
+
+---
+
+## 🚀 Features
+
+- **Simplified Deployments**: Leverage Terraform’s power to deploy and manage cloud resources with minimal effort.
+- **User-Friendly Interface**: Built with **React** and **TailwindCSS**, CloudMake offers a clean and intuitive user experience.
+- **Seamless Backend**: Powered by **Python** and hosted on **Fly.io** for scalable and reliable backend services.
+- **Cross-Platform Compatibility**: Supports multiple cloud providers, making it versatile for all your infrastructure needs.
+- **Real-Time Feedback**: Interactive deployment logs and status updates keep you informed at every step.
+
+---
+
+## 🛠️ Tech Stack
+
+- **Infrastructure**: Terraform
+- **Frontend**: React, TailwindCSS, JavaScript
+- **Backend**: Python
+- **Hosting**: Fly.io
+
+---
+
+## 🎉 Deltahacks 2025 Submission
+
+CloudMake was proudly submitted to **Deltahacks 2025**, showcasing its ability to revolutionize the way developers deploy and manage their online resources.
+
+---
+
+## 🌟 Getting Started
+
+### Prerequisites
+
+Ensure you have the following installed:
+- Terraform (v1.5 or later)
+- Python (v3.8 or later)
+- Node.js (v16 or later)
+- npm or yarn
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/shadielfares/cloudy.git
+   cd cloudy
+   ```
+
+2. Install backend dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Install frontend dependencies:
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+4. Configure your environment:
+   - Create a `.env` file for backend configurations (e.g., Fly.io API keys, cloud provider credentials).
+
+5. Start the development servers:
+   - **Backend**:
+     ```bash
+     python app.py
+     ```
+   - **Frontend**:
+     ```bash
+     npm start
+     ```
+
+---
+
+Thank you for an amazing challenge :)
