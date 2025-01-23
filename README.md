@@ -1,15 +1,15 @@
-# CloudMake
+# MakeCloud
 
-CloudMake is your one-stop solution for simplifying the deployment of online resources. Designed with **Terraform** at its core, CloudMake streamlines the process of managing infrastructure as code (IaC), making it easier than ever to deploy, manage, and scale your online services.
+MakeCloud is your one-stop solution for simplifying the deployment of online resources. Designed with **Terraform** at its core, MakeCloud streamlines the process of managing infrastructure as code (IaC), making it easier than ever to deploy, manage, and scale your online services.
 
-Visit **[makecloud.work](https://makecloud.work)** to explore CloudMake in action.
+Visit **[makecloud.work](https://makecloud.work)** to explore MakeCloud in action.
 
 ---
 
 ## 🚀 Features
 
 - **Simplified Deployments**: Leverage Terraform’s power to deploy and manage cloud resources with minimal effort.
-- **User-Friendly Interface**: Built with **React** and **TailwindCSS**, CloudMake offers a clean and intuitive user experience.
+- **User-Friendly Interface**: Built with **React** and **TailwindCSS**, MakeCloud offers a clean and intuitive user experience.
 - **Seamless Backend**: Powered by **Python** and hosted on **Fly.io** for scalable and reliable backend services.
 - **Cross-Platform Compatibility**: Supports multiple cloud providers, making it versatile for all your infrastructure needs.
 - **Real-Time Feedback**: Interactive deployment logs and status updates keep you informed at every step.
@@ -25,9 +25,9 @@ Visit **[makecloud.work](https://makecloud.work)** to explore CloudMake in actio
 
 ---
 
-## 🎉 Deltahacks 2025 Submission
+## 🎉 UofTHacks 12 Submission
 
-CloudMake was proudly submitted to **Deltahacks 2025**, showcasing its ability to revolutionize the way developers deploy and manage their online resources.
+MakeCloud was proudly submitted to **UoftHacks 12**, showcasing its ability to revolutionize the way developers deploy and manage their online resources.
 
 ---
 
