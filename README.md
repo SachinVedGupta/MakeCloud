@@ -2,7 +2,9 @@
 
 MakeCloud is your one-stop solution for simplifying the deployment of online resources. Designed with **Terraform** at its core, MakeCloud streamlines the process of managing infrastructure as code (IaC), making it easier than ever to deploy, manage, and scale your online services.
 
-Visit **[makecloud.work](https://makecloud.work)** to explore MakeCloud in action.
+Watch our Demo Video: https://drive.google.com/file/d/1h97G39lGhmZWHj0fAw0CSaCP9K49C8tB/view 
+
+Visit **[makecloud.work](https://makecloud.work)** to explore MakeCloud in action (backend still needs to be fully deployed though).
 
 ---
 
