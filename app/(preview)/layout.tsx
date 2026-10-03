@@ -1,24 +1,19 @@
 import "./globals.css";
-import { Metadata } from "next";
-import { Toaster } from "sonner";
-
+import type { Metadata } from "next";
 export const metadata: Metadata = {
-  metadataBase: new URL("https://ai-sdk-preview-attachments.vercel.dev"),
-  title: "Attachments Preview",
-  description: "Experimental preview of attachments in useChat hook",
+  metadataBase: new URL(
+    process.env.MAKECLOUD_PUBLIC_URL || "http://localhost:3000",
+  ),
+  title: "MakeCloud — Your idea. Your cloud.",
+  description:
+    "Describe, review, and provision cloud infrastructure with Terraform.",
 };
-
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>
-        <Toaster position="top-center" richColors />
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
