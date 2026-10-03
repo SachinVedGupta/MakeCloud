@@ -20,3 +20,11 @@ primary_region = 'yyz'
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
+
+[env]
+  MAKECLOUD_DATA_DIR = '/data'
+  MAKECLOUD_MODE = 'demo'
+
+[mounts]
+  source = 'makecloud_data'
+  destination = '/data'

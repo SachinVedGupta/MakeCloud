@@ -1,43 +1,16 @@
-# Virtual environments  
-.venv/  
-__pycache__/  
-
-# Node.js dependencies  
-node_modules/  
-
-# Next.js build folder  
-.next/  
-.next-env.d.ts  
-
-# Terraform files (state & plans)  
-.terraform/  
-.terraform.lock.hcl  
-terraform.tfstate  
-terraform.tfstate.backup  
-tfplan  
-
-# Python cache  
-*.pyc  
-*.pyo  
-*.pyd  
-
-# Environment variables  
-.env  
-.env.example  
-
-# Docker-related files  
-docker-compose.override.yml  
-
-# Lock files (keep only the one for your package manager)  
-package-lock.json  
-pnpm-lock.yaml  
-
-# Git & history files  
-.history/  
-
-# OS-specific files  
-.DS_Store  
-Thumbs.db  
-
-# Misc (Heroku, editor configs, etc.)  
-Procfile  
+.venv/
+__pycache__/
+*.py[cod]
+node_modules/
+.next/
+.env
+.env.local
+.env.*.local
+.makecloud/
+.terraform/
+*.tfstate*
+*.tfplan
+*.tfvars
+.pytest_cache/
+*.tsbuildinfo
+.DS_Store
