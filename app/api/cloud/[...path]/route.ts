@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isIP } from "node:net";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 const allowed = /^(health|catalog|connections(\/(begin|google\/callback|template\/[A-Za-z0-9_-]{40,100}|[0-9a-f-]{36}(\/(instructions|projects|verify))?))?|auth\/(me|login|register|logout|request-link|verify|reset)|sessions|sessions\/[0-9a-f-]{36}(\/(messages|requirements|code|proposal|plan|apply|cancel|recover|archive|connection|export|revisions\/[0-9]+(\/restore)?))?)$/;
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
@@ -57,7 +57,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     }
     const query = queryParams.size ? "?" + queryParams.toString() : "";
     const response = await fetch(`${process.env.MAKECLOUD_BACKEND_URL || "http://127.0.0.1:5010"}/${route}${query}`, {
-      method: request.method, headers, body, redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(55000),
+      method: request.method, headers, body, redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(270000),
     });
     const result = new NextResponse(await response.text(), {
       status: response.status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
