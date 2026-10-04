@@ -1,1 +1,10 @@
-fly.toml
+.git
+.venv
+node_modules
+.next
+.makecloud
+.env*
+__pycache__
+*.tfstate*
+*.tfplan
+*.private.json

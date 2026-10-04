@@ -1,0 +1,49 @@
+name: Verify MakeCloud
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.lock
+      - run: sudo apt-get update && sudo apt-get install -y postgresql
+      - run: echo "MAKECLOUD_TEST_PG_BIN=$(pg_config --bindir)" >> "$GITHUB_ENV"
+      - run: python -m pytest -q tests
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.lock
+      - run: python tests/proxy_smoke.py
+  provider-schemas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.9.8'
+          terraform_wrapper: false
+      - run: pip install -r requirements.lock
+      - run: python tests/validate_blueprints.py
+      - run: pip install cfn-lint==1.57.1
+      - run: cfn-lint deploy/aws-bootstrap.json
+      - run: MAKECLOUD_API_TOKEN=ci-fixture MAKECLOUD_ENCRYPTION_KEY=ci-fixture docker compose --env-file .env.hosted.example -f compose.hosted.yml config --no-env-resolution --quiet
