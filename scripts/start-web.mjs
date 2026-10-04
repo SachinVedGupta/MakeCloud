@@ -1,0 +1,10 @@
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { prepareWeb } from './prepare-web.mjs';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const child = spawn(process.execPath, [prepareWeb(root)], { cwd: root, env: { ...process.env, HOSTNAME: '127.0.0.1', PORT: process.env.PORT || '3000' }, stdio: 'inherit' });
+process.on('SIGTERM', () => child.kill('SIGTERM'));
+process.on('SIGINT', () => child.kill('SIGINT'));
+child.on('error', () => process.exit(1));
+child.on('exit', (code) => process.exit(code || 0));

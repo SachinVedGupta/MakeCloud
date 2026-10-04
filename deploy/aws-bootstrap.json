@@ -1,0 +1,257 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "MakeCloud delegated provisioning. Storage profile is restricted to makecloud-* buckets. Standard grants broad infrastructure control in this account; review before approving.",
+  "Parameters": {
+    "PrincipalArn": {
+      "Type": "String",
+      "AllowedPattern": "arn:aws:iam::[0-9]{12}:role/[\\w+=,.@/-]+"
+    },
+    "ExternalId": {
+      "Type": "String",
+      "MinLength": 20
+    },
+    "ConnectionId": {
+      "Type": "String",
+      "AllowedPattern": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+    },
+    "Profile": {
+      "Type": "String",
+      "Default": "storage",
+      "AllowedValues": [
+        "storage",
+        "standard"
+      ]
+    }
+  },
+  "Conditions": {
+    "Standard": {
+      "Fn::Equals": [
+        {
+          "Ref": "Profile"
+        },
+        "standard"
+      ]
+    }
+  },
+  "Resources": {
+    "Boundary": {
+      "Type": "AWS::IAM::ManagedPolicy",
+      "Condition": "Standard",
+      "Properties": {
+        "ManagedPolicyName": {
+          "Fn::Sub": "MakeCloudRuntimeBoundary-${ConnectionId}"
+        },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "ecr:GetAuthorizationToken",
+                "ecr:BatchCheckLayerAvailability",
+                "ecr:GetDownloadUrlForLayer",
+                "ecr:BatchGetImage",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ],
+              "Resource": "*"
+            }
+          ]
+        }
+      }
+    },
+    "Role": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "RoleName": {
+          "Fn::Sub": "MakeCloud-${ConnectionId}"
+        },
+        "MaxSessionDuration": 3600,
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Ref": "PrincipalArn"
+                }
+              },
+              "Action": "sts:AssumeRole",
+              "Condition": {
+                "StringEquals": {
+                  "sts:ExternalId": {
+                    "Ref": "ExternalId"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "Provision",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": {
+                "Fn::If": [
+                  "Standard",
+                  [
+                    {
+                      "Effect": "Allow",
+                      "Action": [
+                        "s3:ListAllMyBuckets",
+                        "s3:GetBucketLocation"
+                      ],
+                      "Resource": "*"
+                    },
+                    {
+                      "Effect": "Allow",
+                      "Action": "s3:*",
+                      "Resource": [
+                        "arn:aws:s3:::makecloud-*",
+                        "arn:aws:s3:::makecloud-*/*"
+                      ]
+                    },
+                    {
+                      "Effect": "Allow",
+                      "Action": [
+                        "ec2:*",
+                        "ecs:*",
+                        "elasticloadbalancing:*",
+                        "rds:*",
+                        "cloudfront:*",
+                        "logs:*",
+                        "acm:DescribeCertificate",
+                        "acm:ListCertificates"
+                      ],
+                      "Resource": "*"
+                    },
+                    {
+                      "Effect": "Allow",
+                      "Action": [
+                        "secretsmanager:CreateSecret",
+                        "secretsmanager:TagResource"
+                      ],
+                      "Resource": {
+                        "Fn::Sub": "arn:aws:secretsmanager:*:${AWS::AccountId}:secret:rds!db-*"
+                      }
+                    },
+                    {
+                      "Effect": "Allow",
+                      "Action": "kms:DescribeKey",
+                      "Resource": {
+                        "Fn::Sub": "arn:aws:kms:*:${AWS::AccountId}:key/*"
+                      }
+                    },
+                    {
+                      "Effect": "Allow",
+                      "Action": [
+                        "iam:CreateRole",
+                        "iam:PutRolePermissionsBoundary"
+                      ],
+                      "Resource": {
+                        "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/makecloud/*"
+                      },
+                      "Condition": {
+                        "StringEquals": {
+                          "iam:PermissionsBoundary": {
+                            "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:policy/MakeCloudRuntimeBoundary-${ConnectionId}"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "Effect": "Allow",
+                      "Action": [
+                        "iam:GetRole",
+                        "iam:DeleteRole",
+                        "iam:ListRolePolicies",
+                        "iam:ListAttachedRolePolicies",
+                        "iam:ListInstanceProfilesForRole",
+                        "iam:TagRole",
+                        "iam:UntagRole"
+                      ],
+                      "Resource": {
+                        "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/makecloud/*"
+                      }
+                    },
+                    {
+                      "Effect": "Allow",
+                      "Action": [
+                        "iam:AttachRolePolicy",
+                        "iam:DetachRolePolicy"
+                      ],
+                      "Resource": {
+                        "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/makecloud/*"
+                      },
+                      "Condition": {
+                        "ArnEquals": {
+                          "iam:PolicyARN": "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+                        }
+                      }
+                    },
+                    {
+                      "Effect": "Allow",
+                      "Action": "iam:PassRole",
+                      "Resource": {
+                        "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:role/makecloud/*"
+                      },
+                      "Condition": {
+                        "StringEquals": {
+                          "iam:PassedToService": "ecs-tasks.amazonaws.com"
+                        }
+                      }
+                    },
+                    {
+                      "Effect": "Allow",
+                      "Action": "iam:CreateServiceLinkedRole",
+                      "Resource": "*",
+                      "Condition": {
+                        "StringEquals": {
+                          "iam:AWSServiceName": [
+                            "ecs.amazonaws.com",
+                            "elasticloadbalancing.amazonaws.com",
+                            "rds.amazonaws.com"
+                          ]
+                        }
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "Effect": "Allow",
+                      "Action": [
+                        "s3:ListAllMyBuckets",
+                        "s3:GetBucketLocation"
+                      ],
+                      "Resource": "*"
+                    },
+                    {
+                      "Effect": "Allow",
+                      "Action": "s3:*",
+                      "Resource": [
+                        "arn:aws:s3:::makecloud-*",
+                        "arn:aws:s3:::makecloud-*/*"
+                      ]
+                    }
+                  ]
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "RoleArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Role",
+          "Arn"
+        ]
+      }
+    }
+  }
+}

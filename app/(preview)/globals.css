@@ -693,3 +693,81 @@ main {
     font-size: 12px;
   }
 }
+/* Project requirements, reviewed revisions, operations and account access. */
+input, select { font: inherit; }
+label { display: block; font-size: 12px; color: #9cb1bf; margin: 0 0 16px; }
+label > input:not([type="checkbox"]), label > select, label > textarea { display: block; width: 100%; padding: 11px 12px; margin-top: 6px; border: 1px solid #344354; border-radius: 7px; color: #e0eee9; background: #151f2a; font: inherit; }
+label > textarea { min-height: 95px; resize: vertical; }
+input:focus-visible, select:focus-visible { outline: 2px solid #91d5bf; outline-offset: 2px; }
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 15px; }
+.fine-print { color: #8ba0b1; font-size: 11px; line-height: 1.7; }
+.sidebar-label, .button-row, .segmented { display: flex; align-items: center; gap: 10px; }
+.sidebar-label { justify-content: space-between; margin: 0 9px 14px; }
+.sidebar-label .eyebrow { margin: 0; }
+.sidebar-footer .text-button { padding: 10px 0 0; font-size: 10px; }
+.global-error { margin-top: 16px; }
+.tabs { overflow-x: auto; flex-shrink: 0; }
+.tabs button { white-space: nowrap; }
+.code-panel > .detail-panel { flex: 1; min-height: 0; }
+.detail-panel h4 { color: #cedfd9; margin-top: 24px; }
+.button-row { flex-wrap: wrap; }
+.button-row button, .text-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.text-button { color: #a0cfbb; font-size: 12px; padding: 12px; }
+.segmented { margin-bottom: 15px; }
+.segmented button { border: 1px solid #344354; padding: 7px 12px; border-radius: 7px; font-size: 11px; }
+.segmented .selected { background: #23372f; color: #b5e5ce; }
+.code-preview { overflow: auto; padding: 17px; border: 1px solid #2e3b45; border-radius: 8px; background: #0b121a; font: 11px/1.8 GeistMono, monospace; color: #bad5c6; max-height: 380px; tab-size: 2; }
+.cost-card, .status-card, .revision-card, .recovery-card { padding: 15px; border-radius: 8px; border: 1px solid #2e414b; background: #162029; margin-bottom: 17px; }
+.cost-card p { margin: 8px 0 0; }
+.status-card { display: flex; justify-content: space-between; gap: 12px; }
+.status-card strong { color: #b3ddc8; text-transform: capitalize; }
+.status-card span { font-size: 11px; }
+.risk { display: flex; gap: 8px; align-items: flex-start; color: #e0b785; font-size: 12px; }
+.risk svg { flex-shrink: 0; margin-top: 4px; }
+.attribute { display: flex; flex-direction: column; gap: 3px; padding: 9px; border-left: 1px solid #3c4e59; margin-top: 8px; font-size: 10px; overflow-wrap: anywhere; }
+.attribute strong { color: #9daebe; }
+.attribute del { color: #d4a292; text-decoration: none; }
+.attribute ins { color: #9ad5b7; text-decoration: none; }
+.danger { display: inline-flex; align-items: center; border: 1px solid #6a4640; color: #f1b5a1; background: #352421; border-radius: 7px; padding: 11px 14px; font-size: 12px; }
+.operation-banner { display: flex; align-items: center; gap: 10px; padding: 14px; margin-bottom: 12px; border: 1px solid #3b4b40; border-radius: 9px; color: #bad9ca; font-size: 12px; background: #192920; }
+.operation-banner span { flex: 1; text-transform: capitalize; }
+.operation-banner small { display: block; font-size: 10px; color: #8da898; margin-top: 5px; text-transform: none; }
+.operation-banner button { font-size: 10px; }
+.revision-card { display: flex; align-items: flex-start; gap: 9px; }
+.revision-card > div { flex: 1; }
+.revision-card small { display: block; color: #8ba0b1; font-size: 10px; }
+.revision-card p { font-size: 11px; margin: 6px 0 0; }
+.activity { padding: 0; list-style: none; }
+.activity li { border-left: 1px solid #3a4b4a; padding: 0 0 20px 15px; }
+.activity strong { color: #b1c9bd; font-size: 11px; }
+.activity small { display: block; color: #7d93a4; font-size: 9px; }
+.activity p { font-size: 11px; margin: 3px 0 0; }
+.check-result { margin: 15px 0; font-size: 12px; border-bottom: 1px solid #293e47; padding-bottom: 12px; }
+.check-result span { float: right; color: #95c7b0; }
+.check-result p { font-size: 11px; }
+.output-value { font-family: GeistMono, monospace; font-size: 11px; overflow-wrap: anywhere; }
+.file-title > div { display: flex; gap: 8px; margin-left: 10px; }
+.auth-shell { min-height: 100dvh; display: grid; place-items: center; }
+.auth-card { width: min(420px, 100%); border: 1px solid #2f4449; padding: 35px; background: #141e26; border-radius: 15px; }
+.auth-card > svg { color: #a3dbc5; }
+.auth-card h1 { font-size: 30px; margin-bottom: 10px; }
+.auth-card > p { color: #92a9bb; margin-bottom: 25px; }
+.auth-card form > button { width: 100%; margin-top: 6px; }
+.auth-card > .text-button { width: 100%; margin-top: 15px; }
+@media (min-width: 1151px) { .workspace.with-code { grid-template-columns: minmax(320px, .9fr) minmax(430px, 1.1fr); } }
+@media (max-width: 700px) { .fields { grid-template-columns: 1fr; } .status-card { flex-direction: column; } .tabs button { padding: 13px 9px; } .auth-shell { padding: 20px; } .auth-card { padding: 25px; } }
+.cloud-toolbar { display:flex; justify-content:flex-end; padding: 0 32px 12px; }
+.modal-backdrop { position:fixed; inset:0; z-index:100; background:rgba(0,0,0,.65); display:flex; align-items:center; justify-content:center; padding:20px; }
+.cloud-modal { position:relative; width:min(720px,100%); max-height:90vh; overflow:auto; background:var(--panel,#101b19); border:1px solid var(--border,#33433e); border-radius:20px; padding:32px; }
+.modal-close { position:absolute; top:12px; right:12px; }
+.cloud-accounts h3 { margin-bottom:10px; font-size:22px; }
+.cloud-accounts p { line-height:1.6; margin:12px 0; }
+.cloud-accounts label { display:flex; flex-direction:column; gap:8px; margin:14px 0; }
+.cloud-accounts input,.cloud-accounts select { padding:12px; color:inherit; background:#14221e; border:1px solid #34483f; border-radius:8px; width:100%; }
+.connection-card { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:16px 0; border-bottom:1px solid #34483f; }
+.connection-card div { flex:1; min-width:180px; }
+.connection-card small { display:block; margin-top:6px; overflow-wrap:anywhere; }
+.onboarding-steps { border-top:1px solid #34483f; margin-top:24px; padding-top:18px; }
+.onboarding-steps pre { white-space:pre-wrap; overflow-wrap:anywhere; }
+.onboarding-steps a.primary { display:inline-block; text-decoration:none; }
+.account-links { display:flex; flex-wrap:wrap; gap:8px; }

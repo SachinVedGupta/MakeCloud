@@ -1,0 +1,11 @@
+# Small API image for an ephemeral free web service. HCP hosts Terraform.
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.lock .
+RUN pip install --no-cache-dir -r requirements.lock && useradd --create-home makecloud
+COPY app.py model.py run_cloud.py assistant.py blueprints.py domain.py store.py cloud_connections.py account_mail.py hcp_runner.py hcp_connections.py ./
+RUN mkdir /data && chown makecloud:makecloud /data
+USER makecloud
+ENV MAKECLOUD_DATA_DIR=/data MAKECLOUD_RUNNER=hcp MAKECLOUD_EPHEMERAL_HOST=true
+EXPOSE 8080
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1", "--no-access-log"]

@@ -1,645 +1,213 @@
 "use client";
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Cloud,
-  Plus,
-  ArrowUp,
-  Download,
-  Copy,
-  Check,
-  RefreshCw,
-  ShieldCheck,
-  LoaderCircle,
-  Code2,
-  CircleAlert,
-} from "lucide-react";
+import { Cloud, Plus, ArrowUp, RefreshCw, ShieldCheck, LoaderCircle, Code2, CircleAlert, Archive, Download, LogOut, X } from "lucide-react";
+import { CodeTools, ConnectionPanel, DeploymentPanel, HistoryPanel, PlanPanel, ProposalPanel, RequirementsPanel } from "../../components/workspace";
+import { CloudAccounts } from "../../components/cloud-accounts";
+import { CloudConnection, Health, Recent, Session, clouds } from "../../components/types";
 
-type Session = {
-  id: string;
-  status: string;
-  mode: string;
-  messages: { role: string; content: string }[];
-  code: string;
-  summary: string;
-  error: string | null;
-  approval: string | null;
-  plan: {
-    changes: { address: string; actions: string[] }[];
-    creates: number;
-    updates: number;
-    deletes: number;
-  } | null;
-};
-type Health = {
-  mode: string;
-  ai_configured: boolean;
-  terraform_installed: boolean;
-  apply_enabled: boolean;
-};
-type Recent = { id: string; title: string; status: string };
 async function api(path: string, method = "GET", data?: unknown) {
-  const response = await fetch("/api/cloud/" + path, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: data ? JSON.stringify(data) : undefined,
-  });
-  const result = await response.json();
-  if (!response.ok)
-    throw new Error(
-      typeof result.detail === "string"
-        ? result.detail
-        : "Check your input and try again.",
-    );
+  const request = () => fetch("/api/cloud/" + path, { method, headers: { "Content-Type": "application/json" }, body: data === undefined ? undefined : JSON.stringify(data), cache: "no-store" });
+  let response: Response;
+  try { response = await request(); }
+  catch (e) { if (method !== "GET") throw e; response = await request(); }
+  // A sleeping free backend may need more than one proxy timeout to wake.
+  // Repeat reads only; never repeat a deployment or other mutation.
+  if (method === "GET" && [502, 503, 504].includes(response.status)) response = await request();
+  let result;
+  try { result = await response.json(); } catch { throw new Error("The server returned an unexpected response. Check your connection and reload."); }
+  if (!response.ok) throw new Error(typeof result.detail === "string" ? result.detail : "Check your input and try again.");
   return result;
 }
+const runningStatus = (session: Session | null) => !!session && ["planning", "applying"].includes(session.status);
+const panels = ["requirements", "proposal", "terraform", "plan", "deployment", "history", "connection"];
+
 export default function MakeCloud() {
   const [session, setSession] = useState<Session | null>(null);
   const [recent, setRecent] = useState<Recent[]>([]);
   const [health, setHealth] = useState<Health | null>(null);
+  const [connections, setConnections] = useState<CloudConnection[]>([]);
+  const [account, setAccount] = useState<{ id: string; email: string } | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [input, setInput] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [tab, setTab] = useState("terraform");
-  const [confirmed, setConfirmed] = useState(false);
-  const [destructive, setDestructive] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [tab, setTab] = useState("requirements");
+  const [archived, setArchived] = useState(false);
+  const [register, setRegister] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [invite, setInvite] = useState("");
+  const [showAccounts, setShowAccounts] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const sessionRef = useRef<Session | null>(null);
+  const accountRef = useRef<string>("operator");
+  const loadVersion = useRef(0);
+  const loadTarget = useRef<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const hasInfrastructure =
-    !!session &&
-    ["applied", "apply_failed", "interrupted"].includes(session.status);
-  const running =
-    busy ||
-    (session && ["planning", "applying"].includes(session.status)
-      ? session.status
-      : "");
+  const dirty = !!session && code !== session.code;
+  const running = runningStatus(session);
+  const blocked = !!busy || running || !!session?.recovery_required || !!session?.archived;
+  const draftKey = useCallback((id: string) => `makecloud-draft:${accountRef.current}:${id}`, []);
   const adopt = useCallback((next: Session) => {
+    if (sessionRef.current?.id === next.id && sessionRef.current.updated_at > next.updated_at) return;
+    const previous = sessionRef.current;
+    sessionRef.current = next;
+    loadTarget.current = next.id;
     setSession(next);
-    setCode(next.code);
-    setConfirmed(false);
-    setDestructive(false);
-    localStorage.setItem("makecloud-session", next.id);
-  }, []);
-  const load = useCallback(
-    async (id: string) => {
-      setError("");
-      try {
-        adopt(await api("sessions/" + id));
-      } catch (e) {
-        setError((e as Error).message);
-      }
-    },
-    [adopt],
-  );
+    let editor = next.code;
+    try {
+      const draft = JSON.parse(localStorage.getItem(draftKey(next.id)) || "null");
+      if (draft && draft.revision === next.revision) editor = draft.code;
+      else if (draft) setError("A local edit belongs to an older revision. Its text is kept in this browser; export before restoring it manually.");
+    } catch { /* A malformed browser draft does not block server state. */ }
+    setCode(editor);
+    localStorage.setItem(`makecloud-session:${accountRef.current}`, next.id);
+    if (next.proposal && previous?.proposal?.id !== next.proposal.id) setTab("proposal");
+    if (next.status === "planned" && previous?.status !== "planned") setTab("plan");
+    if (["applied", "destroyed", "apply_failed", "interrupted", "canceled_apply"].includes(next.status) && previous?.status !== next.status) setTab("deployment");
+  }, [draftKey]);
+  const load = useCallback(async (id: string, polling = false) => {
+    if (polling && loadTarget.current !== id) return;
+    if (!polling) loadTarget.current = id;
+    const version = ++loadVersion.current;
+    try {
+      const next = await api("sessions/" + id);
+      if (version === loadVersion.current) adopt(next);
+    } catch (e) { if (version === loadVersion.current) setError((e as Error).message); }
+  }, [adopt]);
   const refresh = useCallback(async () => {
     try {
-      const [status, list] = await Promise.all([
-        api("health"),
-        api("sessions"),
-      ]);
-      setHealth(status);
-      setRecent(list);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }, []);
+      const [status, list, available] = await Promise.all([api("health"), api(`sessions?archived=${archived}`), api("connections")]);
+      setHealth(status); setRecent(list); setConnections(available);
+    } catch (e) { setError((e as Error).message); }
+  }, [archived]);
   useEffect(() => {
-    refresh();
-    const id = localStorage.getItem("makecloud-session");
-    if (id) load(id);
-  }, [load, refresh]);
-  useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: "smooth" });
-  }, [session?.messages, busy]);
+    let canceled = false;
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    if (fragment.has("connected") || fragment.has("connection_error")) setShowAccounts(true);
+    const verifyToken = fragment.get("verify");
+    const reset = fragment.get("reset");
+    if (reset) setResetToken(reset);
+    if (verifyToken || reset) window.history.replaceState(null, "", window.location.pathname);
+    if (verifyToken) api("auth/verify", "POST", { token: verifyToken }).then((result) => setNotice(result.message)).catch((e) => setError(e.message));
+    (async () => {
+      try {
+        const status = await api("health");
+        if (canceled) return;
+        setHealth(status);
+        try {
+          const identity = await api("auth/me");
+          if (canceled) return;
+          accountRef.current = identity.id; setAccount(identity);
+          const id = localStorage.getItem(`makecloud-session:${identity.id}`);
+          if (id) await load(id);
+        } catch { setAccount(null); }
+      } catch (e) { if (!canceled) setError((e as Error).message); }
+      if (!canceled) setAuthReady(true);
+    })();
+    return () => { canceled = true; };
+  }, [load]);
+  useEffect(() => { if (account) refresh(); }, [account, refresh]);
+  useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [session?.messages.length, busy]);
   const sessionId = session?.id;
-  const sessionStatus = session?.status;
   useEffect(() => {
-    if (
-      !sessionId ||
-      !sessionStatus ||
-      !["planning", "applying"].includes(sessionStatus)
-    )
-      return;
-    const timer = setInterval(() => load(sessionId), 3000);
-    return () => clearInterval(timer);
-  }, [sessionId, sessionStatus, load]);
-  async function send() {
-    if (!input.trim() || running || hasInfrastructure) return;
-    const text = input.trim();
-    setBusy("Thinking");
-    setError("");
+    if (!sessionId || !running || busy) return;
+    let canceled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      await load(sessionId, true);
+      if (!canceled) timer = setTimeout(poll, 5000);
+    };
+    timer = setTimeout(poll, 5000);
+    return () => { canceled = true; clearTimeout(timer); };
+  }, [sessionId, running, busy, load]);
+  async function send(text = input.trim()) {
+    if (!text || busy || session?.archived || dirty) return;
+    ++loadVersion.current;
+    setBusy("Thinking"); setError("");
     try {
-      adopt(
-        await api(
-          session ? `sessions/${session.id}/messages` : "sessions",
-          "POST",
-          { message: text },
-        ),
-      );
-      setInput("");
-      await refresh();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy("");
-      inputRef.current?.focus();
-    }
+      adopt(await api(session ? `sessions/${session.id}/messages` : "sessions", "POST", { message: text, revision: session?.revision }));
+      setInput(""); await refresh();
+    } catch (e) { setError((e as Error).message); } finally { setBusy(""); inputRef.current?.focus(); }
   }
-  async function action(kind: "save" | "plan" | "apply") {
-    if (!session || running) return;
-    setBusy(
-      kind === "plan"
-        ? "Initializing, validating, and planning"
-        : kind === "apply"
-          ? "Applying reviewed plan"
-          : "Saving",
-    );
+  async function action(path: string, method = "POST", data?: unknown) {
+    if (!session || busy) return;
+    ++loadVersion.current;
+    setBusy(path.startsWith("plan") ? "Starting plan" : path === "apply" ? "Starting deployment" : "Saving");
     setError("");
     try {
-      let next = session;
-      if (kind !== "apply" && code !== session.code)
-        next = await api(`sessions/${session.id}/code`, "PUT", { code });
-      if (kind === "plan") {
-        next = await api(`sessions/${session.id}/plan`, "POST");
-        setTab("plan");
-      }
-      if (kind === "apply")
-        next = await api(`sessions/${session.id}/apply`, "POST", {
-          approval: session.approval,
-          confirm: confirmed,
-          confirm_destructive: destructive,
-        });
-      adopt(next);
-      await refresh();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy("");
-    }
+      const next = await api(`sessions/${session.id}/${path}`, method, data);
+      if (path === "code" || path === "proposal" || path.includes("restore")) localStorage.removeItem(draftKey(session.id));
+      adopt(next); await refresh();
+      if (runningStatus(next)) setTab("deployment");
+    } catch (e) { setError((e as Error).message); } finally { setBusy(""); }
   }
   function start() {
-    setSession(null);
-    setCode("");
-    setInput("");
-    setError("");
-    setTab("terraform");
-    localStorage.removeItem("makecloud-session");
-    inputRef.current?.focus();
+    if (dirty || busy) return;
+    ++loadVersion.current;
+    loadTarget.current = null;
+    sessionRef.current = null; setSession(null); setCode(""); setInput(""); setError(""); setTab("requirements");
+    localStorage.removeItem(`makecloud-session:${accountRef.current}`); inputRef.current?.focus();
   }
-  function download() {
-    const url = URL.createObjectURL(new Blob([code], { type: "text/plain" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "main.tf";
-    link.click();
-    URL.revokeObjectURL(url);
+  async function signIn() {
+    ++loadVersion.current;
+    setBusy("Signing in"); setError("");
+    try {
+      if (resetToken) { const result = await api("auth/reset", "POST", { token: resetToken, password }); setNotice(result.message); setResetToken(""); setPassword(""); return; }
+      if (register) { const result = await api("auth/register", "POST", { email, password, invite }); if (result.verification_required) { setNotice(result.message); setRegister(false); setPassword(""); return; } }
+      const identity = await api("auth/login", "POST", { email, password });
+      accountRef.current = identity.id; setAccount(identity); setPassword(""); setInvite("");
+      sessionRef.current = null; setSession(null); setCode("");
+      const id = localStorage.getItem(`makecloud-session:${identity.id}`); if (id) await load(id);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(""); }
   }
-  return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <Link className="brand" href="/">
-          <span className="brand-mark">
-            <Cloud size={23} />
-          </span>{" "}
-          MakeCloud
-        </Link>
-        <button className="new-button" onClick={start} disabled={!!running}>
-          <Plus size={17} /> New project
-        </button>
-        <p className="eyebrow">YOUR PROJECTS</p>
-        <nav aria-label="Projects">
-          {recent.map((item) => (
-            <button
-              className={`project ${item.id === session?.id ? "selected" : ""}`}
-              key={item.id}
-              disabled={!!running}
-              onClick={() => load(item.id)}
-            >
-              <Cloud size={16} />
-              <span>
-                {item.title}
-                <small>{item.status.replaceAll("_", " ")}</small>
-              </span>
-            </button>
-          ))}
-          {!recent.length && (
-            <p className="empty-history">
-              Your conversations will appear here.
-            </p>
-          )}
-        </nav>
-        <div className="sidebar-footer">
-          <ShieldCheck size={18} />
-          <span>
-            Credentials stay outside chat
-            <small>One trusted operator per instance</small>
-          </span>
-        </div>
-      </aside>
-      <main>
-        <header className="topbar">
-          <div>
-            <span className="eyebrow">INFRASTRUCTURE, SIMPLIFIED</span>
-            <h1>
-              {session
-                ? "Your cloud workspace"
-                : "Build something that scales."}
-            </h1>
-          </div>
-          <span
-            className={`mode-pill ${health?.mode === "live" ? "live" : ""}`}
-          >
-            <span />{" "}
-            {health
-              ? health.mode === "demo"
-                ? "Demo · no deployment"
-                : "Live mode"
-              : "Connecting…"}
-          </span>
-        </header>
-        <div className="mobile-nav">
-          <button className="secondary" disabled={!!running} onClick={start}>
-            <Plus size={15} /> New project
-          </button>
-          <select
-            aria-label="Open a project"
-            disabled={!!running}
-            value={session?.id || ""}
-            onChange={(e) => (e.target.value ? load(e.target.value) : start())}
-          >
-            <option value="">Projects</option>
-            {recent.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.title}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className={`workspace ${session?.code ? "with-code" : ""}`}>
-          <section className="chat-panel">
-            {!session ? (
-              <div className="welcome">
-                <div className="hero-icon">
-                  <Cloud size={35} />
-                </div>
-                <h2>
-                  Your idea.
-                  <br />
-                  <span>Your cloud.</span>
-                </h2>
-                <p>
-                  Tell us what you want to build. We’ll help shape the
-                  requirements and turn them into Terraform you can review.
-                </p>
-                <div className="examples">
-                  {[
-                    "A private storage bucket for my app",
-                    "A web app with a database on AWS",
-                    "Private object storage on Google Cloud",
-                  ].map((text, index) => (
-                    <button
-                      disabled={!!running}
-                      key={text}
-                      onClick={() => {
-                        setInput(text);
-                        inputRef.current?.focus();
-                      }}
-                    >
-                      <span>{["01", "02", "03"][index]}</span>
-                      {text}
-                      <ArrowUp size={15} />
-                    </button>
-                  ))}
-                </div>
-                <p className="demo-note">
-                  {health?.mode === "demo"
-                    ? "Demo supports private storage examples on AWS, Azure, and GCP. Configure live AI for other infrastructure."
-                    : "Review generated code and a real Terraform plan before applying any changes."}
-                </p>
-              </div>
-            ) : (
-              <div className="messages" aria-live="polite">
-                {session.messages.map((message, i) => (
-                  <article className={`message ${message.role}`} key={i}>
-                    <span className="avatar">
-                      {message.role === "user" ? "You" : <Cloud size={18} />}
-                    </span>
-                    <div>
-                      <small>
-                        {message.role === "user" ? "YOU" : "MAKECLOUD"}
-                      </small>
-                      <p>{message.content}</p>
-                    </div>
-                  </article>
-                ))}
-                {busy && (
-                  <p className="working">
-                    <LoaderCircle size={16} className="spin" /> {busy}…
-                  </p>
-                )}
-                <div ref={bottom} />
-              </div>
-            )}
-            {(error || session?.error) && (
-              <div className="error" role="alert">
-                <CircleAlert size={17} />
-                <span>{error || session?.error}</span>
-                <button
-                  onClick={() => {
-                    refresh();
-                    if (session) load(session.id);
-                  }}
-                  aria-label="Refresh status"
-                >
-                  <RefreshCw size={16} />
-                </button>
-              </div>
-            )}
-            {hasInfrastructure && (
-              <div className="notice">
-                {session?.status === "applied"
-                  ? "Deployment completed. Terraform state is retained on the backend."
-                  : "Inspect the workspace and cloud account before retrying; resources may exist."}
-              </div>
-            )}
-            <form
-              className="composer"
-              onSubmit={(e) => {
-                e.preventDefault();
-                send();
-              }}
-            >
-              <textarea
-                ref={inputRef}
-                aria-label="Message MakeCloud"
-                value={input}
-                maxLength={8000}
-                disabled={!!running || hasInfrastructure}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={
-                  session
-                    ? session.code
-                      ? "Ask for a change in live mode…"
-                      : "Answer the question above…"
-                    : "Describe your infrastructure…"
-                }
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    send();
-                  }
-                }}
-              />
-              <button
-                type="submit"
-                disabled={!input.trim() || !!running || hasInfrastructure}
-                aria-label="Send message"
-              >
-                {busy ? (
-                  <LoaderCircle size={19} className="spin" />
-                ) : (
-                  <ArrowUp size={20} />
-                )}
-              </button>
-            </form>
-            <div className="composer-hint">
-              {health?.mode === "demo"
-                ? "Demo templates · export and inspect · no cloud changes"
-                : "AI can make mistakes. Review code, permissions, and costs."}
-              <button
-                onClick={() => {
-                  refresh();
-                  if (session) load(session.id);
-                }}
-                disabled={!!busy}
-                aria-label="Reload workspace"
-              >
-                <RefreshCw size={13} />
-              </button>
-            </div>
-          </section>
-          {session?.code && (
-            <section className="code-panel">
-              <div className="code-header">
-                <div>
-                  <Code2 size={18} />
-                  <strong>Infrastructure</strong>
-                  <span className="status-label">
-                    {session.status.replaceAll("_", " ")}
-                  </span>
-                </div>
-                <div>
-                  <button
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(code);
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 1800);
-                      } catch {
-                        setError(
-                          "Clipboard unavailable. Select the code or download it.",
-                        );
-                      }
-                    }}
-                    aria-label="Copy Terraform"
-                  >
-                    {copied ? <Check size={16} /> : <Copy size={16} />}
-                  </button>
-                  <button onClick={download} aria-label="Download Terraform">
-                    <Download size={16} />
-                  </button>
-                </div>
-              </div>
-              <div className="tabs">
-                <button
-                  className={tab === "terraform" ? "active" : ""}
-                  onClick={() => setTab("terraform")}
-                >
-                  Terraform
-                </button>
-                <button
-                  className={tab === "plan" ? "active" : ""}
-                  onClick={() => setTab("plan")}
-                >
-                  Plan review
-                </button>
-                <button
-                  className={tab === "setup" ? "active" : ""}
-                  onClick={() => setTab("setup")}
-                >
-                  Connection
-                </button>
-              </div>
-              {tab === "terraform" && (
-                <>
-                  <div className="file-title">
-                    <span /> main.tf{" "}
-                    <small>
-                      {code !== session.code
-                        ? "Unsaved edits · new plan required"
-                        : "Review before deployment"}
-                    </small>
-                  </div>
-                  <textarea
-                    className="code-editor"
-                    spellCheck={false}
-                    aria-label="Terraform code"
-                    value={code}
-                    disabled={!!running || hasInfrastructure}
-                    onChange={(e) => {
-                      setCode(e.target.value);
-                      setConfirmed(false);
-                    }}
-                  />
-                  <div className="code-actions">
-                    <button
-                      className="secondary"
-                      disabled={
-                        !!running || hasInfrastructure || code === session.code
-                      }
-                      onClick={() => action("save")}
-                    >
-                      Save changes
-                    </button>
-                    <button
-                      className="primary"
-                      disabled={
-                        !!running ||
-                        hasInfrastructure ||
-                        health?.mode !== "live"
-                      }
-                      onClick={() => action("plan")}
-                    >
-                      Create Terraform plan
-                    </button>
-                  </div>
-                </>
-              )}
-              {tab === "plan" && (
-                <div className="detail-panel">
-                  <h3>Review the exact changes</h3>
-                  <p>
-                    A real plan initializes providers, validates configuration,
-                    and checks your cloud account. Approval expires after 15
-                    minutes.
-                  </p>
-                  {session.plan ? (
-                    <>
-                      <div className="plan-stats">
-                        <span>
-                          <b>{session.plan.creates}</b> create
-                        </span>
-                        <span>
-                          <b>{session.plan.updates}</b> update
-                        </span>
-                        <span>
-                          <b>{session.plan.deletes}</b> delete
-                        </span>
-                      </div>
-                      <ul className="changes">
-                        {session.plan.changes.map((change) => (
-                          <li key={change.address}>
-                            <code>{change.address}</code>
-                            <span>{change.actions.join(" → ")}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      {!session.plan.changes.length && (
-                        <p>No infrastructure changes.</p>
-                      )}
-                      <label className="check-row">
-                        <input
-                          type="checkbox"
-                          checked={confirmed}
-                          onChange={(e) => setConfirmed(e.target.checked)}
-                        />
-                        I reviewed this plan and understand it may incur cloud
-                        charges.
-                      </label>
-                      {session.plan.deletes > 0 && (
-                        <label className="check-row">
-                          <input
-                            type="checkbox"
-                            checked={destructive}
-                            onChange={(e) => setDestructive(e.target.checked)}
-                          />
-                          I explicitly approve deletions and replacements.
-                        </label>
-                      )}
-                      <button
-                        className="primary"
-                        disabled={
-                          !!running ||
-                          !health?.apply_enabled ||
-                          session.status !== "planned" ||
-                          code !== session.code ||
-                          !confirmed ||
-                          (!!session.plan.deletes && !destructive)
-                        }
-                        onClick={() => action("apply")}
-                      >
-                        Apply reviewed plan
-                      </button>
-                      {!health?.apply_enabled && (
-                        <p>Deployment is disabled in backend settings.</p>
-                      )}
-                    </>
-                  ) : (
-                    <div className="blank-plan">
-                      <ShieldCheck size={30} />
-                      <p>
-                        {health?.mode === "demo"
-                          ? "Demo mode never creates a real plan or provisions infrastructure."
-                          : "Create a plan from the Terraform tab to see proposed changes."}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-              {tab === "setup" && (
-                <div className="detail-panel">
-                  <h3>Connect your cloud</h3>
-                  <p>
-                    Configure identity on the trusted backend. Never paste keys
-                    into chat or Terraform.
-                  </p>
-                  <dl>
-                    <dt>AI mode</dt>
-                    <dd>
-                      {health?.mode}
-                      {health?.mode === "live" && !health.ai_configured
-                        ? " · API key missing"
-                        : ""}
-                    </dd>
-                    <dt>Terraform</dt>
-                    <dd>
-                      {health?.terraform_installed
-                        ? "Installed"
-                        : "Not installed"}
-                    </dd>
-                    <dt>Deployment</dt>
-                    <dd>{health?.apply_enabled ? "Enabled" : "Disabled"}</dd>
-                  </dl>
-                  <p>
-                    AWS: use a scoped role or AWS_PROFILE.
-                    <br />
-                    GCP: use Application Default Credentials.
-                    <br />
-                    Azure: use a scoped service principal or workload identity.
-                  </p>
-                  <p>
-                    This installation serves one trusted operator. Public
-                    multi-user hosting requires separate identities, isolated
-                    runners, and tenant state.
-                  </p>
-                </div>
-              )}
-            </section>
-          )}
-        </div>
-      </main>
-    </div>
-  );
+  async function signOut() {
+    if (dirty) return;
+    ++loadVersion.current;
+    loadTarget.current = null;
+    try { await api("auth/logout", "POST"); accountRef.current = ""; sessionRef.current = null; setAccount(null); setSession(null); setCode(""); setRecent([]); setConnections([]); } catch (e) { setError((e as Error).message); }
+  }
+  async function exportProject() {
+    if (!session) return;
+    try {
+      const result = await api(`sessions/${session.id}/export`);
+      if (dirty) result.unsaved_local_edit = code;
+      const url = URL.createObjectURL(new Blob([JSON.stringify(result, null, 2)], { type: "application/json" }));
+      const link = document.createElement("a"); link.href = url; link.download = `${session.spec.name || "makecloud"}-project.json`; link.click(); URL.revokeObjectURL(url);
+    } catch (e) { setError((e as Error).message); }
+  }
+  if (health?.auth_mode === "accounts" && authReady && !account) return <main className="auth-shell"><div className="auth-card"><Cloud size={35} /><h1>MakeCloud</h1><p>{resetToken ? "Choose a new password" : register ? "Create your cloud workspace" : "Sign in to your cloud workspace"}</p>
+    <form onSubmit={(e) => { e.preventDefault(); signIn(); }}>{!resetToken && <label>Email<input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>}<label>Password<input type="password" required minLength={12} maxLength={128} autoComplete={register || resetToken ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} /></label>{register && health.registration !== "public" && <label>Invitation code<input required value={invite} onChange={(e) => setInvite(e.target.value)} /></label>}{notice && <div role="status" className="notice">{notice}</div>}{error && <div role="alert" className="error">{error}</div>}<button className="primary" disabled={!!busy}>{busy || (resetToken ? "Reset password" : register ? "Create account" : "Sign in")}</button></form>
+    {!resetToken && <><button className="text-button" onClick={() => { setRegister(!register); setError(""); }}>{register ? "Already have an account? Sign in" : "Create an account"}</button><div className="account-links">{["reset", "verify"].map((purpose) => <button className="text-button" disabled={!!busy || !email} key={purpose} onClick={async () => { setBusy("Requesting email"); setError(""); try { const result = await api("auth/request-link", "POST", { email, purpose }); setNotice(result.message); } catch (e) { setError((e as Error).message); } finally { setBusy(""); } }}>{purpose === "reset" ? "Forgot password?" : "Resend verification email"}</button>)}</div><p className="fine-print">Enter your email above to request a link.</p></>}
+  </div></main>;
+  return <div className="app-shell">
+    <aside className="sidebar"><button className="brand" onClick={start} disabled={dirty}><span className="brand-mark"><Cloud size={23} /></span>MakeCloud</button><button className="new-button" onClick={start} disabled={!!busy || dirty}><Plus size={17} />New project</button><div className="sidebar-label"><p className="eyebrow">{archived ? "ARCHIVED PROJECTS" : "YOUR PROJECTS"}</p><button aria-label={archived ? "Show active projects" : "Show archived projects"} onClick={() => setArchived(!archived)}><Archive size={14} /></button></div><nav aria-label="Projects">{recent.map((item) => <button className={`project ${item.id === session?.id ? "selected" : ""}`} key={item.id} disabled={!!busy || dirty} onClick={() => load(item.id)}><Cloud size={16} /><span>{item.title}<small>{item.cloud ? clouds[item.cloud] + " · " : ""}{item.status.replaceAll("_", " ")}</small></span></button>)}{!recent.length && <p className="empty-history">{archived ? "No archived projects." : "Your projects will appear here."}</p>}</nav><div className="sidebar-footer"><ShieldCheck size={18} /><span>Review before cloud changes<small>{account?.email || "Connecting…"}</small>{health?.auth_mode === "accounts" && <button className="text-button" disabled={dirty} onClick={signOut}><LogOut size={12} />Sign out</button>}</span></div></aside>
+    <main><header className="topbar"><div><span className="eyebrow">INFRASTRUCTURE, SIMPLIFIED</span><h1>{session ? session.spec.name || "Your cloud workspace" : "Build something that scales."}</h1></div><span className={`mode-pill ${health?.mode === "live" ? "live" : ""}`}><span />{health ? health.mode === "demo" ? "Blueprints · no deployment" : health.ai_configured ? "Live AI + cloud" : "Live cloud · blueprints" : "Connecting…"}</span></header>
+      <div className="cloud-toolbar"><button className="secondary" onClick={() => setShowAccounts(true)}><Cloud size={16} />Your cloud accounts</button></div>
+      {showAccounts && <div className="modal-backdrop"><div role="dialog" aria-modal="true" aria-label="Cloud accounts" className="cloud-modal"><button className="modal-close" aria-label="Close cloud accounts" onClick={() => setShowAccounts(false)}><X size={20} /></button><CloudAccounts health={health} connections={connections} refresh={refresh} /></div></div>}
+      <div className="mobile-nav"><button className="secondary" disabled={!!busy || dirty} onClick={start}><Plus size={15} />New project</button><select aria-label="Open a project" disabled={!!busy || dirty} value={session?.id || ""} onChange={(e) => e.target.value ? load(e.target.value) : start()}><option value="">Projects</option>{recent.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></div>
+      {error && <div className="error global-error" role="alert"><CircleAlert size={17} /><span>{error}</span><button aria-label="Dismiss error" onClick={() => setError("")}><X size={16} /></button></div>}
+      <div className={`workspace ${session ? "with-code" : ""}`}><section className="chat-panel">
+        {!session ? <div className="welcome"><div className="hero-icon"><Cloud size={35} /></div><h2>Your idea.<br /><span>Your cloud.</span></h2><p>Describe what you are building. We will clarify the requirements, explain the trade-offs, and propose infrastructure you can review.</p><div className="examples">{["A private storage bucket on AWS", "A public container app on Google Cloud", "A static website with a CDN on AWS", "Private PostgreSQL on AWS"].map((text, index) => <button disabled={!!busy} key={text} onClick={() => { setInput(text); inputRef.current?.focus(); }}><span>{String(index + 1).padStart(2, "0")}</span>{text}<ArrowUp size={15} /></button>)}</div><p className="demo-note">{health?.mode === "demo" ? "Local blueprints support storage and container apps on AWS, Azure and Google Cloud, plus AWS sites and PostgreSQL. Demo never deploys." : "Ask questions, review code and approve a real plan before cloud changes."}</p></div> : <div className="messages" aria-live="polite">{session.messages.map((message, i) => <article className={`message ${message.role}`} key={i}><span className="avatar">{message.role === "user" ? "You" : <Cloud size={18} />}</span><div><small>{message.role === "user" ? "YOU" : "MAKECLOUD"}</small><p>{message.content}</p></div></article>)}{busy === "Thinking" && <p className="working"><LoaderCircle size={16} className="spin" />Thinking…</p>}<div ref={bottom} /></div>}
+        {session?.error && <div className="error" role="alert"><CircleAlert size={17} /><span>{session.error}</span></div>}
+        {running && <div className="operation-banner"><LoaderCircle size={16} className="spin" /><span>{session?.job?.stage.replaceAll("_", " ") || session?.status}<small>Saved operation · safe to reload</small></span><button className="secondary" disabled={!!busy} onClick={() => action("cancel", "POST")}>Cancel</button></div>}
+        {session?.archived && <div className="notice">Archived project. Infrastructure is retained.<button className="text-button" onClick={() => action("archive", "PUT", { archived: false })}>Restore project</button></div>}
+        {dirty && <div className="notice">Unsaved Terraform edits are kept in this browser. Save or discard them before sending a message or switching projects.</div>}
+        <form className="composer" onSubmit={(e) => { e.preventDefault(); send(); }}><textarea ref={inputRef} aria-label="Message MakeCloud" value={input} maxLength={8000} disabled={!!busy || !!session?.archived || dirty} onChange={(e) => setInput(e.target.value)} placeholder={running || session?.recovery_required ? "Ask about this project or its status…" : session ? "Answer, ask a question, or describe a change…" : "Describe your infrastructure…"} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} /><button type="submit" disabled={!input.trim() || !!busy || !!session?.archived || dirty} aria-label="Send message">{busy === "Thinking" ? <LoaderCircle size={19} className="spin" /> : <ArrowUp size={20} />}</button></form><div className="composer-hint"><span>{health?.ai_configured && health.mode === "live" ? "Live AI · review assumptions and changes" : "Local blueprint assistant · credentials stay outside chat"}</span><button aria-label="Reload workspace" disabled={!!busy} onClick={() => { refresh(); if (session) load(session.id); }}><RefreshCw size={13} /></button></div>
+      </section>
+      {session && <section className="code-panel"><div className="code-header"><div><Code2 size={18} /><strong>Project workspace</strong><span className="status-label">{session.status.replaceAll("_", " ")}</span></div><div><button aria-label="Export project" onClick={exportProject}><Download size={16} /></button><button aria-label={session.archived ? "Restore project" : "Archive project"} title="Archiving retains cloud resources" disabled={running || dirty || !!busy} onClick={() => action("archive", "PUT", { archived: !session.archived })}><Archive size={16} /></button></div></div><div className="tabs" role="tablist" aria-label="Project workspace">{panels.map((panel) => <button key={panel} role="tab" aria-selected={tab === panel} className={tab === panel ? "active" : ""} onClick={() => setTab(panel)}>{panel === "proposal" ? `Proposal${session.proposal ? " •" : ""}` : panel.charAt(0).toUpperCase() + panel.slice(1)}</button>)}</div>
+        {tab === "requirements" && <RequirementsPanel session={session} action={action} blocked={blocked || dirty} />}
+        {tab === "proposal" && <ProposalPanel session={session} action={action} blocked={blocked || dirty} />}
+        {tab === "terraform" && <>{session.code ? <><div className="file-title"><span />main.tf<small>{dirty ? "Unsaved local edits" : `Accepted revision ${session.revision}`}</small><CodeTools code={code} onError={setError} /></div><textarea className="code-editor" spellCheck={false} aria-label="Terraform code" value={code} disabled={blocked} onChange={(e) => { setCode(e.target.value); localStorage.setItem(draftKey(session.id), JSON.stringify({ revision: session.revision, code: e.target.value })); }} /><div className="code-actions"><button className="secondary" disabled={blocked || !dirty} onClick={() => action("code", "PUT", { code, revision: session.revision })}>Save changes</button>{dirty && <button className="text-button" onClick={() => { localStorage.removeItem(draftKey(session.id)); setCode(session.code); }}>Discard local edits</button>}<button className="primary" disabled={blocked || dirty || !!session.proposal || health?.mode !== "live"} onClick={() => action("plan", "POST", { revision: session.revision })}>Create Terraform plan</button></div></> : <div className="blank-plan"><Code2 size={32} /><p>Accept a proposal to create your first configuration revision.</p><button className="secondary" onClick={() => setTab("proposal")}>Review proposal</button></div>}</>}
+        {tab === "plan" && <PlanPanel session={session} action={action} blocked={blocked || dirty} health={health} />}
+        {tab === "deployment" && <DeploymentPanel session={session} action={action} blocked={blocked || dirty} />}
+        {tab === "history" && <HistoryPanel session={session} action={action} blocked={blocked || dirty} />}
+        {tab === "connection" && <ConnectionPanel session={session} action={action} blocked={blocked || dirty} health={health} connections={connections} />}
+      </section>}
+      </div>
+    </main>
+  </div>;
 }

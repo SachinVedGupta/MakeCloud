@@ -1,93 +1,127 @@
 # MakeCloud
 
-Describe infrastructure in a clean chat interface, gather requirements, generate cloud-specific Terraform, review a real plan, and explicitly apply that saved plan. The workflow is cloud agnostic; the resulting resources are specific to AWS, Azure, or GCP.
+MakeCloud turns a chat into a persistent infrastructure project: clarify requirements, review proposed Terraform, choose a cloud identity, inspect a saved plan, and explicitly approve deployment. You can ask follow-up questions, revise the design, retain manual edits, and review cleanup later. The workflow spans AWS, Google Cloud and Azure; the Terraform resources remain specific to each provider.
 
-## Run locally
+## Hosted use
 
-Requires Python 3.12+, Node 22+, and npm. Terraform 1.5+ is needed for live plans; Docker includes Terraform. No AI or cloud credentials are required for demo mode.
+Customers can use MakeCloud through a hosted website without cloning it or installing Terraform. The operator configures the deployment once. See [hosting and cloud onboarding](HOSTING.md) for the HTTPS stack, self-service AWS/Google/Azure connections, accounts, persistent storage and exact release checks. See the [product plan and research decisions](HOSTED_PLAN.md) for scope and trade-offs. Actual public hosting and real cloud provisioning have not been verified in this session.
+
+## Start locally
+
+Use macOS or Linux, Python 3.12+, Node 22+, and npm. Terraform is needed for real planning; the demo needs no AI key or cloud credentials.
 
 ```bash
-git clone https://github.com/SachinVedGupta/MakeCloud.git
-cd MakeCloud
-cp .env.example .env
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.lock
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.lock
 npm ci
+# Copy only if you do not already have a configuration:
+test -f .env || cp .env.example .env
+npm run dev:all
 ```
 
-Start the API in one terminal:
+Open [MakeCloud](http://127.0.0.1:3000). For a local production preview, run `npm run build` and then `npm run start:all` instead. The launcher starts both services on loopback and stops them together when interrupted. It creates an in-memory installation token if none is configured. Local accounts use HTTP cookies for this loopback session; hosted accounts require HTTPS. Change `MAKECLOUD_DEV_UI_PORT` / `MAKECLOUD_DEV_API_PORT` if the defaults are occupied; the launcher checks both before startup. Its backend defaults to 5010 to avoid macOS AirPlay on port 5000.
 
-```bash
-source .venv/bin/activate
-uvicorn app:app --host 127.0.0.1 --port 5000 --workers 1 --env-file .env
+Try: `A private storage bucket on AWS in us-east-1 named myproject with a $20 budget`. Facts already supplied are extracted; the assistant asks for missing facts. Ask `Why use versioning?` without changing the design. Review and accept the proposal, then edit or download `main.tf`. Conversations and accepted revisions survive reloads and restarts. Unsaved Terraform edits are retained in this browser and must be saved or discarded before switching projects.
+
+**Demo never plans or deploys to a cloud.** Its assistant uses local reference designs and bounded explanations. Arbitrary requests require live AI and may still be rejected by the Terraform policy or provider. Desired budget is recorded, not a spending cap.
+
+| Reference design | AWS | Google Cloud | Azure |
+| --- | --- | --- | --- |
+| Private object storage | S3, encryption, access block, versioning | Private versioned bucket | Private Blob storage, identity access |
+| Container application | Fargate, load balancer, logs, scoped execution role | Cloud Run v2, explicit ingress | Container Apps, managed HTTPS |
+| Static website and CDN | Private S3 origin, HTTPS CloudFront | Use live AI for a custom design | Use live AI for a custom design |
+| Private PostgreSQL | Encrypted RDS, managed master secret, backups | Use live AI for a custom design | Use live AI for a custom design |
+| Container and PostgreSQL | App-to-database security group rule | Use live AI for a custom design | Use live AI for a custom design |
+
+Blueprints provision infrastructure. Upload static assets separately; provide a compatible container image and correct port. Google Cloud must be able to pull the image. Database integration, secret retrieval, migrations and private network access remain application work. AWS public production containers require an existing regional ACM certificate and its matching hostname. After deployment, point that hostname at the load balancer with your DNS provider; automatic DNS onboarding and certificate-domain verification are not implemented. Production database deletion protection and final snapshots are deliberate retention settings; cleanup can require a separate reviewed configuration change.
+
+## Live AI and cloud workflow
+
+In `.env`, set `MAKECLOUD_MODE=live` and configure `OPENAI_API_KEY` securely on the backend. The default model is `gpt-4o`; `OPENAI_BASE_URL` supports a compatible JSON chat-completions service. Keys stay outside chat and generated Terraform. The assistant receives named requirements, recent messages, accepted Terraform, configuration revision, deployment status and the redacted plan summary. It returns a validated answer, clarification or proposal. Answering a question does not modify code or approval.
+
+Local blueprints also work in live mode without an AI key. Custom Terraform needs live AI. Policies reject extra providers, modules, provisioners, remote backends, local file functions and inline password/credential arguments. Provider region and project/subscription must match the project's requirements. Provider configuration uses literal targets; configure identity outside Terraform. Parsing is an early check; successful provider validation and an actual plan are required before apply.
+
+1. Gather requirements and **accept a proposed configuration**. Acceptance creates a revision, not cloud resources.
+2. Configure a scoped cloud identity. Account mode requires an authorized connection selected in the Connection panel.
+3. **Create Terraform plan**. A background job runs format, initialization, validation, plan and JSON inspection. The UI shows progress, resource and attribute changes, risk warnings, target identity and pricing availability.
+4. Review the exact plan. Enable `MAKECLOUD_ENABLE_APPLY=true` separately on the backend to permit deployment. Acknowledge charges and permissions; deletions/replacements and estimates above your budget require additional acknowledgment.
+5. **Apply reviewed plan**. The backend checks configuration and plan hashes and executes the saved plan. Approval is single use, expires after 15 minutes, and is invalidated by code, requirements or connection changes.
+6. Inspect outputs and application readiness. Terraform completion does not prove an application is reachable; connectivity is explicitly marked not run.
+7. Continue asking questions or propose an update against retained state. Deployed projects keep their original cloud, region and account target; use a new project for migrations. **Create cleanup plan** for deliberate destruction; review and approve its deletions separately.
+
+Jobs run on a two-thread executor with per-project exclusion and a configurable timeout per Terraform command. Cancel stops the subprocess or Docker container. A failed, canceled or interrupted apply may have changed resources. Inspect the account, protected logs and retained state, then acknowledge recovery and create a fresh plan. Jobs are persisted atomically with their project. A restart resumes queued work that never started and obtains fresh credentials; started operations are marked interrupted and require review. Applies are never silently replayed. Queued applies also recheck plan expiry. Chat explanations remain available during operations and recovery.
+
+History records accepted revisions and project events. Restore creates another revision and requires a fresh plan. Project export contains conversation, requirements, code, history and safe outputs; it excludes credentials, raw state and approval tokens. Archiving is reversible and retains any cloud resources.
+
+## Cloud connections and accounts
+
+The default `MAKECLOUD_AUTH_MODE=operator` is for one trusted operator. The Terraform runner uses that operator's configured identity when no connection is selected:
+
+| Cloud | Backend identity |
+| --- | --- |
+| AWS | Scoped workload role or local AWS profile/environment |
+| Google Cloud | Application Default Credentials or workload identity for an existing project |
+| Azure | Scoped service principal or workload identity with `ARM_*` configuration |
+
+For invited accounts, set `MAKECLOUD_AUTH_MODE=accounts` on both services and `MAKECLOUD_INVITE_CODE` on the backend. Passwords must be 12–128 characters, are hashed with scrypt, and login tokens are stored as hashes with 24-hour expiry. Backend authorization checks ownership on every project route. Secure, HTTP-only, SameSite=Lax cookies are the hosted default so provider callbacks can return to the signed-in account; use HTTPS. Public registration is available with MAKECLOUD_REGISTRATION=public and working TLS SMTP. It requires email verification; password recovery invalidates previous login sessions. Registration and login attempts, messages and operations have limits.
+
+Use **Your cloud accounts** for browser onboarding: AWS CloudFormation delegation with a unique external ID, Google Cloud consent and project selection, or Azure Lighthouse portal delegation. Connection tokens stay encrypted on the server, and execution acquires fresh credentials. A single matching verified connection automatically fills the project/subscription target; several connections require selection. Full operator configuration and permission boundaries are documented in [HOSTING.md](HOSTING.md).
+
+For advanced operator-managed connections, configure `MAKECLOUD_CONNECTIONS_FILE` to a backend-only protected JSON file. Each entry has `id`, `label`, `owner` (account ID or email), `cloud`, target identifiers, optional `regions` and an `environment` mapping. Only the owner sees its non-secret metadata. Keep this file outside Git, restrict permissions, and populate credentials from your secret manager. For example, an AWS record has this shape with its credential environment supplied separately:
+
+```json
+[
+  {
+    "id": "aws-development",
+    "label": "Development account",
+    "owner": "person@example.com",
+    "cloud": "aws",
+    "account_id": "111111111111",
+    "regions": ["us-east-1"],
+    "environment": {}
+  }
+]
 ```
 
-Start the frontend in another:
+Scoped AWS connection environments accept `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION`, and `AWS_DEFAULT_REGION`. Google accepts `GOOGLE_CREDENTIALS`, `GOOGLE_OAUTH_ACCESS_TOKEN`, and `GOOGLE_PROJECT`; declare matching `project_id` metadata. Azure accepts `ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`, `ARM_TENANT_ID`, `ARM_SUBSCRIPTION_ID`, `ARM_USE_OIDC`, and `ARM_OIDC_TOKEN`; declare matching `subscription_id`. Scoped connections do not inherit the operator's cloud credential environment. AWS plans also insert `allowed_account_ids` into the executed provider configuration. IAM permissions must restrict identities to the intended account, project, region and operations.
+
+Account cloud execution fails closed unless `MAKECLOUD_RUNNER=docker` and `MAKECLOUD_ENCRYPTION_KEY` are configured. Each Terraform command uses a separate constrained container with a read-only root, dropped capabilities, resource limits and only that project's workspace mounted. This isolates local files; it does not limit what the scoped cloud credentials are allowed to provision. Browser cloud onboarding, verified public registration, password reset and a durable single-instance job queue are implemented. Billing, distributed workers, stronger host isolation and unrestricted custom-resource support remain outside this beta. Real provider grants, actual container execution and public hosting still require configured live verification.
+
+## Storage and hosting
+
+Project records in SQLite and retained Terraform state, plans and logs are encrypted with Fernet. Operator mode generates a protected local encryption key if none is supplied. Hosted/account deployments must provide `MAKECLOUD_ENCRYPTION_KEY` from a secret manager separately from the data volume. Preserve that key with protected backups: losing it loses access to retained projects and state. Terraform working files are decrypted during operations and sealed before completion is exposed. This is encryption at rest, not protection against a compromised running host. Code and provider caches remain filesystem artifacts with restricted permissions.
+
+Use **one API process, two execution slots and one backend replica per data directory**. An exclusive startup lock prevents a second process from interfering with recovery. Persist `MAKECLOUD_DATA_DIR`, protect backups, and disable API autoscaling for this release. For separate manual starts:
 
 ```bash
+.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 5010 --workers 1 --env-file .env
 npm run dev
 ```
 
-Open http://localhost:3000. Describe a private storage bucket, answer the five requirements questions, inspect the generated Terraform, edit/save it, and copy or download `main.tf`. Conversations survive reloads and backend restarts.
+The frontend proxies allowed `/api/cloud/*` routes. Set the same random `MAKECLOUD_API_TOKEN` on both services for remote hosting; keep the backend private. Operator-mode remote frontend access also requires `MAKECLOUD_OPERATOR_PASSWORD`, with Basic username `operator`. Hosted production fails closed without authentication. `npm start` is explicitly a loopback-only production preview; for hosting, run Next with your authenticated environment and do not set `MAKECLOUD_LOCAL_ONLY=true`.
 
-**Demo mode is storage-only and never provisions infrastructure.** Budget and arbitrary requirements are collected but are not interpreted by the deterministic demo templates. AWS, Azure, and GCP examples are available. Azure requires a subscription UUID and GCP requires a project ID in the final answer. Demo is a product walkthrough, not evidence of a live cloud deployment.
+The backend Dockerfile contains Terraform and the Docker CLI; `compose.hosted.yml` supplies persistent disk, Docker runner access, the standalone frontend and Caddy HTTPS. See [HOSTING.md](HOSTING.md) for the privileged-daemon boundary and setup. Standalone Fly deployment does not supply the required hosted runner by itself. Existing Fly deployment is manual through Actions and needs a protected `makecloud_data` volume, API token and a single machine. Deploy the frontend separately. The configured Fly app name belongs to the existing installation; change it for a new deployment. No public deployment is performed by the test suite.
 
-## Live AI and cloud deployment
+**Historical credential exposure:** prototype Git history contains committed AWS and Terraform Cloud credentials. Removing current files does not revoke them. Revoke/rotate the exposed credentials, audit use, and coordinate history cleanup separately.
 
-Set the following in `.env` and restart the API:
+## Optional pricing
 
-```dotenv
-MAKECLOUD_MODE=live
-OPENAI_API_KEY=your_key
-OPENAI_MODEL=gpt-4o
-MAKECLOUD_ENABLE_APPLY=false
-```
-
-`OPENAI_BASE_URL` can point to an OpenAI-compatible API supporting JSON chat completions. Your requirements and recent conversation are sent to that service. The API key stays on the backend. Live generation supports resources belonging to one of the three selected providers; the policy deliberately rejects modules, remote backends, provisioners, file access, inline credentials/passwords, and non-selected providers. HCL parsing/policy is an early check; only a successful `terraform validate` and `terraform plan` establishes provider/schema validity. Unsupported AI output is returned as an actionable error; requirements can be corrected and retried.
-
-Install Terraform on the backend and configure least-privilege cloud identity there:
-
-| Cloud | Identity | Requirements |
-| --- | --- | --- |
-| AWS | Scoped workload role, or `AWS_PROFILE` with local CLI credentials | Region, resource/project name |
-| GCP | Application Default Credentials or workload identity | Existing project ID, region, enabled APIs |
-| Azure | Workload identity or `ARM_*` service principal environment | Subscription ID, region |
-
-Do not paste cloud keys into chat or generated code. The model and browser do not need them. All projects in an installation share the operator's configured cloud identity.
-
-Use **Create Terraform plan**. The backend runs `fmt`, `init`, `validate`, `plan -out`, and `show -json`, displaying resource addresses and create/update/delete actions without returning raw secret-bearing plan values. Costs are not estimated by this release: inspect cloud pricing before proceeding. If the plan is correct, enable `MAKECLOUD_ENABLE_APPLY=true`, restart the API, refresh the UI, and acknowledge the plan. Deletions and replacements require an additional checkbox. Approval lasts 15 minutes, is single-use, and is invalidated when code changes. Apply executes only the saved plan with matching configuration and plan hashes.
-
-Terraform operations run synchronously with a five-minute timeout per command; the UI shows progress and prevents duplicate submissions. Reloading a running conversation polls for completion. Failed or interrupted apply may have created resources: inspect the cloud account and retained state before any further operation. Completed or failed deployment workspaces are intentionally locked against casual edits. This release has no automated destroy button; use Terraform from the trusted operator workspace for deliberate cleanup.
-
-## Operator security and hosting
-
-**This release is for one trusted operator per installation. It is not a public multi-tenant SaaS.** AI-generated Terraform and provider plugins must be treated as privileged code. The allowlist is not an execution sandbox. Run the backend in a dedicated environment, keep credentials scoped, and never share the operator login with untrusted users.
-
-The Next.js frontend proxies `/api/cloud/*` to `MAKECLOUD_BACKEND_URL`, so browsers never call localhost on a different machine or mix HTTP and HTTPS APIs. Local development binds both services to loopback. `npm start` explicitly sets `MAKECLOUD_LOCAL_ONLY=true` for local production testing; do not set that flag on a remotely reachable frontend. Hosted production fails closed without an operator password, including requests with a spoofed localhost Host header. For remote hosting:
-
-- Set a long random `MAKECLOUD_API_TOKEN` identically on frontend and backend. Direct non-loopback backend requests require that token.
-- Set `MAKECLOUD_OPERATOR_PASSWORD` on the frontend. HTTP Basic authentication uses username `operator`. Remote frontend access is blocked without a password. Use HTTPS.
-- Use exactly **one API worker and one backend replica**. Locks and SQLite coordinate one process, not distributed workers. Disable API autoscaling.
-- Persist `MAKECLOUD_DATA_DIR` on a protected volume. Sessions, Terraform state, saved plans, and error logs live there with restrictive filesystem permissions. Back it up securely; plans and state can contain sensitive data.
-- The Fly deployment is manual through Actions, includes Terraform, and mounts `/data`. Create `makecloud_data` first, set the API token as a Fly secret, and deploy a single machine. Deploy the frontend separately with backend URL, API token, and operator password. The existing Fly app name is retained; change it for a new instance.
-
-Before a public multi-user launch, implement account authentication and per-project authorization, per-tenant scoped cloud identity, isolated execution workers, encrypted durable state, background jobs/cancellation, audit history, quotas, billing/cost estimates, secret management, and reviewed cleanup/recovery. Do not expose the shared operator API as a substitute.
-
-**Credential incident:** historical prototype files committed AWS and Terraform Cloud credentials. Current files remove these values; Git history still contains them. Revoke/rotate every exposed credential, audit its usage, and separately coordinate history cleanup with existing clones. Removing a current file does not revoke a credential.
+With Infracost v2.4.2+ and `INFRACOST_CLI_AUTHENTICATION_TOKEN`, plans get a measured monthly estimate using `scan` followed by `inspect --summary --json`. The legacy `breakdown` CLI is also supported with `INFRACOST_API_KEY`. The CLI reads a temporary protected plan JSON file; MakeCloud deletes pricing input/output files afterward and exposes only the estimate. The CLI extracts pricing parameters for its service rather than sending the raw plan to the Cloud Pricing API, according to [Infracost's privacy documentation](https://www.infracost.io/docs/faq/). Missing tools, service failure or invalid prices produce an explicit unavailable result while retaining the plan. Usage, egress, taxes and unsupported resources can add charges. An estimate is not a spending cap. Current command and authentication details follow the [Infracost CLI documentation](https://www.infracost.io/docs/features/cli_commands/). Actual pricing-service requests require configured credentials and have not been verified here.
 
 ## Verification
 
 ```bash
-python -m pytest -q tests
+.venv/bin/python -m pytest -q tests
 npm run lint
 npm run typecheck
 npm run build
-npm start
-# Integrated smoke test starts its own servers on ports 3101 and 5101:
-python tests/proxy_smoke.py
+.venv/bin/python tests/proxy_smoke.py
+# Downloads real provider schemas; does not access cloud accounts:
+.venv/bin/python tests/validate_blueprints.py
 ```
 
-The regression suite covers AWS/Azure/GCP demo generation, input retries, persistence/restarts, HCL policy rejection, live AI adapter behavior with mocked responses, authentication, plan expiration, destructive-change acknowledgment, approval invalidation, Terraform failure handling, exact saved-plan apply and tampering. Real AI requests, provider downloads, cloud plans and deployments need working external credentials/network; mocked coverage is not a claim those operations ran live.
+Regression tests cover requirements and probing, explanations without mutation, malformed AI, accepted-code context, persistence and encryption, target guards, ownership, scoped connections, expiry and invalidation, budget acknowledgment, subprocess cancellation, restart recovery, redaction, exact-plan tampering, cleanup, export and archives.
 
-The automated proxy smoke test runs the built frontend and backend together for all three cloud demos, code edits/reloads, cross-origin rejection, remote frontend authentication, fail-closed hosted configuration, and graceful backend downtime. Browser-based visual verification requires an installed browser and remains separate from these HTTP checks.
+The HTTP integration test starts the production frontend and API on temporary ports. It exercises all three demo clouds, controlled AI over HTTP, a simulated Terraform executable, deployment/update discussions, cleanup, cookies, cross-user denial, origin rejection, installation authentication and backend downtime. It additionally exercises public signup, one-use verification, recovery, Google OAuth callback/nonces, project selection, AWS role verification and Azure template tickets using controlled provider and mail responses. It does **not** prove live AI, cloud-account provisioning, Docker execution or browser rendering. Provider validation separately uses real AWS, Google and Azure schemas for ten reference configurations, including AWS app/database and production HTTPS variants.
+
+Production dependency audit currently reports no vulnerabilities. Development lint tooling inherits five high-severity findings from an unpatched `braces` issue; [the advisory](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) lists no patched version. Do not force a Next.js downgrade just to suppress this report; recheck as upstream fixes become available.

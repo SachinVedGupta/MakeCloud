@@ -3,8 +3,12 @@ __pycache__/
 *.py[cod]
 node_modules/
 .next/
+.vercel/
 .env
 .env.local
+.env.hosted
+.env.hcp
+*.private.json
 .env.*.local
 .makecloud/
 .terraform/
@@ -14,3 +18,5 @@ node_modules/
 .pytest_cache/
 *.tsbuildinfo
 .DS_Store
+.env*
+!.env*.example

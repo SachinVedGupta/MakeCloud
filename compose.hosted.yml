@@ -1,0 +1,57 @@
+# One Linux host. No customer installs. Only Caddy exposes public ports.
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    environment:
+      MAKECLOUD_AUTH_MODE: accounts
+      MAKECLOUD_API_TOKEN: ${MAKECLOUD_API_TOKEN:?Set the installation token}
+      MAKECLOUD_BACKEND_URL: http://api:8080
+      MAKECLOUD_PUBLIC_URL: https://${MAKECLOUD_HOST:?Set your public hostname}
+    depends_on:
+      - api
+    networks: [internal]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env.hosted
+    environment:
+      MAKECLOUD_AUTH_MODE: accounts
+      MAKECLOUD_MODE: live
+      MAKECLOUD_RUNNER: docker
+      MAKECLOUD_SECURE_COOKIES: "true"
+      MAKECLOUD_API_TOKEN: ${MAKECLOUD_API_TOKEN:?Set the installation token}
+      MAKECLOUD_ENCRYPTION_KEY: ${MAKECLOUD_ENCRYPTION_KEY:?Set the external encryption key}
+      MAKECLOUD_PUBLIC_URL: https://${MAKECLOUD_HOST:?Set your public hostname}
+      MAKECLOUD_DATA_DIR: ${MAKECLOUD_HOST_DATA_DIR:-/var/lib/makecloud}
+    volumes:
+      # Same absolute path inside/outside API: sibling runner bind mounts use it.
+      - ${MAKECLOUD_HOST_DATA_DIR:-/var/lib/makecloud}:${MAKECLOUD_HOST_DATA_DIR:-/var/lib/makecloud}
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - ${MAKECLOUD_DOCKER_GID:?Set the host Docker socket group ID}
+    networks: [internal]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 45s
+  edge:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      MAKECLOUD_HOST: ${MAKECLOUD_HOST:?Set your public hostname}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [internal]
+    depends_on: [web]
+networks:
+  internal:
+volumes:
+  caddy_data:
+  caddy_config:

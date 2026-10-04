@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: makecloud-api
+    runtime: docker
+    plan: free
+    region: virginia
+    dockerfilePath: ./Dockerfile.hcp
+    healthCheckPath: /readyz
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: MAKECLOUD_MODE
+        value: live
+      - key: MAKECLOUD_AUTH_MODE
+        value: accounts
+      - key: MAKECLOUD_REGISTRATION
+        value: invite
+      - key: MAKECLOUD_MAX_ACCOUNTS
+        value: '10'
+      - key: MAKECLOUD_SECURE_COOKIES
+        value: 'true'
+      - key: MAKECLOUD_ENABLE_APPLY
+        value: 'false'
+      - key: MAKECLOUD_HCP_ORGANIZATION
+        value: for_hack_uoft
+      - key: MAKECLOUD_HCP_PROJECT_NAME
+        value: MakeCloud
+      - key: MAKECLOUD_DATABASE_URL
+        sync: false
+      - key: MAKECLOUD_ENCRYPTION_KEY
+        sync: false
+      - key: MAKECLOUD_API_TOKEN
+        sync: false
+      - key: MAKECLOUD_INVITE_CODE
+        sync: false
+      - key: MAKECLOUD_HCP_TOKEN
+        sync: false
+      - key: MAKECLOUD_HCP_PROJECT_ID
+        sync: false
+      - key: MAKECLOUD_PUBLIC_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false

@@ -1,13 +1,15 @@
 {
   "name": "makecloud",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
-    "start": "MAKECLOUD_LOCAL_ONLY=true next start --hostname 127.0.0.1",
+    "start": "MAKECLOUD_LOCAL_ONLY=true node scripts/start-web.mjs",
     "lint": "eslint app components middleware.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev:all": "node --env-file-if-exists=.env scripts/dev.mjs",
+    "start:all": "node --env-file-if-exists=.env scripts/dev.mjs --production"
   },
   "dependencies": {
     "lucide-react": "^0.473.0",

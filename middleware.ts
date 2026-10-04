@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 export function middleware(request: NextRequest) {
+  // Account API authorization is checked by the backend on every request.
+  if (process.env.MAKECLOUD_AUTH_MODE === "accounts") return NextResponse.next();
   const password = process.env.MAKECLOUD_OPERATOR_PASSWORD;
   let host = "";
   try {
